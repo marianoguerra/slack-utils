@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
+use std::time::Duration;
 
 use slack_blocks_render::{render_blocks_as_markdown, SlackReferences};
 use slack_morphism::prelude::{SlackBlock, SlackChannelId, SlackUserId};
@@ -8,6 +9,9 @@ use webpage::{Webpage, WebpageOptions};
 
 use crate::error::{AppError, Result};
 use crate::ProgressCallback;
+
+/// Maximum bytes to fetch when resolving link titles (32KB should be enough for <title>)
+const MAX_FETCH_BYTES: usize = 32 * 1024;
 
 /// Truncate a URL for display
 fn truncate_url(url: &str, max_len: usize) -> String {
@@ -18,6 +22,149 @@ fn truncate_url(url: &str, max_len: usize) -> String {
     }
 }
 
+/// Create WebpageOptions with size and time limits
+fn limited_webpage_options() -> WebpageOptions {
+    let mut options = WebpageOptions::default();
+    options.timeout = Duration::from_secs(5);
+    // Request only the first N bytes - enough to get the <title> tag
+    options.headers = vec![format!("Range: bytes=0-{}", MAX_FETCH_BYTES - 1)];
+    options
+}
+
+/// A link with optional rich metadata from Slack attachment unfurls
+struct RichLink {
+    url: String,
+    title: String,
+    description: Option<String>,
+    author: Option<String>,
+    author_link: Option<String>,
+    service: Option<String>,
+    image_url: Option<String>,
+    fields: Vec<(String, String)>,
+    footer: Option<String>,
+}
+
+impl RichLink {
+    fn new(url: String, title: String, attachment: Option<&serde_json::Value>) -> Self {
+        let mut link = Self {
+            url,
+            title,
+            description: None,
+            author: None,
+            author_link: None,
+            service: None,
+            image_url: None,
+            fields: Vec::new(),
+            footer: None,
+        };
+
+        if let Some(att) = attachment {
+            // Extract description
+            link.description = att
+                .get("text")
+                .or_else(|| att.get("description"))
+                .and_then(|t| t.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+
+            // Extract author
+            link.author = att
+                .get("author_name")
+                .and_then(|a| a.as_str())
+                .map(|s| s.to_string());
+            link.author_link = att
+                .get("author_link")
+                .and_then(|l| l.as_str())
+                .map(|s| s.to_string());
+
+            // Extract service name (if different from author)
+            let service = att.get("service_name").and_then(|s| s.as_str());
+            let author = link.author.as_deref().unwrap_or("");
+            if let Some(s) = service
+                && s != author
+            {
+                link.service = Some(s.to_string());
+            }
+
+            // Extract image
+            link.image_url = att
+                .get("image_url")
+                .or_else(|| att.get("thumb_url"))
+                .or_else(|| att.get("video_thumbnail_url"))
+                .or_else(|| att.get("thumb_720"))
+                .or_else(|| att.get("thumb_480"))
+                .or_else(|| att.get("thumb_360"))
+                .and_then(|u| u.as_str())
+                .map(|s| s.to_string());
+
+            // Extract fields
+            if let Some(fields_arr) = att.get("fields").and_then(|f| f.as_array()) {
+                for field in fields_arr {
+                    if let (Some(title), Some(value)) = (
+                        field.get("title").and_then(|t| t.as_str()),
+                        field.get("value").and_then(|v| v.as_str()),
+                    ) {
+                        link.fields.push((title.to_string(), value.to_string()));
+                    }
+                }
+            }
+
+            // Extract footer
+            link.footer = att
+                .get("footer")
+                .and_then(|f| f.as_str())
+                .map(|s| s.to_string());
+        }
+
+        link
+    }
+
+    fn render(&self) -> String {
+        let mut output = format!("- [{}]({})\n", self.title, self.url);
+
+        // Add author/service info
+        if let Some(author) = &self.author {
+            let author_text = match &self.author_link {
+                Some(link) => format!("  *By [{}]({})*\n", author, link),
+                None => format!("  *By {}*\n", author),
+            };
+            output.push_str(&author_text);
+        }
+
+        if let Some(service) = &self.service {
+            output.push_str(&format!("  *From {}*\n", service));
+        }
+
+        // Add description as indented text
+        if let Some(desc) = &self.description {
+            let indented: String = desc
+                .lines()
+                .map(|line| format!("  > {}", line))
+                .collect::<Vec<_>>()
+                .join("\n");
+            output.push_str(&indented);
+            output.push('\n');
+        }
+
+        // Add fields
+        for (title, value) in &self.fields {
+            output.push_str(&format!("  **{}:** {}\n", title, value));
+        }
+
+        // Add image preview
+        if let Some(img) = &self.image_url {
+            output.push_str(&format!("  ![{}]({})\n", self.title, img));
+        }
+
+        // Add footer
+        if let Some(footer) = &self.footer {
+            output.push_str(&format!("  _{}_\n", footer));
+        }
+
+        output
+    }
+}
+
 /// Resolve a better title for a URL if the current title equals the URL
 fn resolve_title_if_needed(title: &str, url: &str) -> String {
     // Check if title is the same as URL (or very similar)
@@ -25,7 +172,7 @@ fn resolve_title_if_needed(title: &str, url: &str) -> String {
         title == url || title.is_empty() || url.contains(title) || title.contains("http");
 
     if needs_resolution
-        && let Ok(page) = Webpage::from_url(url, WebpageOptions::default())
+        && let Ok(page) = Webpage::from_url(url, limited_webpage_options())
         && let Some(page_title) = page.html.title
         && !page_title.is_empty()
     {
@@ -245,12 +392,29 @@ pub fn export_conversations_to_markdown_with_progress(
                 })?;
             }
 
-            // Collect resources (files and links)
-            let mut resources: Vec<(String, String)> = Vec::new();
+            // Build attachment lookup by URL for merging with links
+            let attachments = message
+                .get("attachments")
+                .and_then(|a| a.as_array())
+                .map(|arr| arr.as_slice())
+                .unwrap_or(&[]);
 
-            // Add files if present
-            if let Some(files) = message.get("files").and_then(|f| f.as_array()) {
-                for file in files {
+            let attachment_by_url: HashMap<&str, &serde_json::Value> = attachments
+                .iter()
+                .filter_map(|att| {
+                    let url = att
+                        .get("original_url")
+                        .or_else(|| att.get("from_url"))
+                        .or_else(|| att.get("title_link"))
+                        .and_then(|u| u.as_str())?;
+                    Some((url, att))
+                })
+                .collect();
+
+            // Collect files
+            let mut files: Vec<(String, String)> = Vec::new();
+            if let Some(file_arr) = message.get("files").and_then(|f| f.as_array()) {
+                for file in file_arr {
                     let title = file
                         .get("title")
                         .or_else(|| file.get("name"))
@@ -261,62 +425,97 @@ pub fn export_conversations_to_markdown_with_progress(
                         .or_else(|| file.get("permalink"))
                         .and_then(|u| u.as_str());
                     if let Some(url) = url {
-                        resources.push((title.to_string(), url.to_string()));
+                        files.push((title.to_string(), url.to_string()));
                     }
                 }
             }
 
-            // Add selected_links if present, resolving titles if they equal the URL
+            // Collect links with their unfurl data merged
+            let mut rich_links: Vec<RichLink> = Vec::new();
+            let mut used_attachment_urls: std::collections::HashSet<&str> =
+                std::collections::HashSet::new();
+
             if let Some(links) = message.get("selected_links").and_then(|l| l.as_array()) {
                 for link in links {
-                    let title = link
+                    let link_title = link
                         .get("title")
                         .and_then(|t| t.as_str())
                         .unwrap_or("Untitled link");
-                    let url = link.get("url").and_then(|u| u.as_str());
-                    if let Some(url) = url {
-                        // Check if we need to resolve title and report progress
-                        let needs_resolution = title == url
-                            || title.is_empty()
-                            || url.contains(title)
-                            || title.contains("http");
-                        if needs_resolution {
-                            report_progress(
-                                message_count + 1,
-                                total_messages,
-                                &format!("Resolving: {}", truncate_url(url, 40)),
-                            );
-                        }
-                        let resolved_title = resolve_title_if_needed(title, url);
-                        resources.push((resolved_title, url.to_string()));
+                    let url = match link.get("url").and_then(|u| u.as_str()) {
+                        Some(u) => u,
+                        None => continue,
+                    };
+
+                    // Look for matching attachment
+                    let attachment = attachment_by_url.get(url).copied();
+                    if attachment.is_some() {
+                        used_attachment_urls.insert(url);
                     }
+
+                    // Get title from attachment if available, otherwise resolve
+                    let title = attachment
+                        .and_then(|att| att.get("title").and_then(|t| t.as_str()))
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| {
+                            let needs_resolution = link_title == url
+                                || link_title.is_empty()
+                                || url.contains(link_title)
+                                || link_title.contains("http");
+                            if needs_resolution {
+                                report_progress(
+                                    message_count + 1,
+                                    total_messages,
+                                    &format!("Resolving: {}", truncate_url(url, 40)),
+                                );
+                            }
+                            resolve_title_if_needed(link_title, url)
+                        });
+
+                    rich_links.push(RichLink::new(url.to_string(), title, attachment));
                 }
             }
 
-            // Write resources section if there are any
-            if !resources.is_empty() {
+            // Add any attachments that weren't matched to selected_links
+            for att in attachments {
+                let url = att
+                    .get("original_url")
+                    .or_else(|| att.get("from_url"))
+                    .or_else(|| att.get("title_link"))
+                    .and_then(|u| u.as_str());
+
+                if let Some(url) = url
+                    && !used_attachment_urls.contains(url)
+                {
+                    let title = att
+                        .get("title")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("Untitled")
+                        .to_string();
+                    rich_links.push(RichLink::new(url.to_string(), title, Some(att)));
+                }
+            }
+
+            // Write resources section if there are any files or links
+            if !files.is_empty() || !rich_links.is_empty() {
                 writeln!(writer, "\n📑 Resources\n").map_err(|e| AppError::WriteFile {
                     path: output_path.to_string(),
                     source: e,
                 })?;
-                for (title, url) in resources {
+
+                // Write files
+                for (title, url) in &files {
                     writeln!(writer, "- [{}]({})", title, url).map_err(|e| AppError::WriteFile {
                         path: output_path.to_string(),
                         source: e,
                     })?;
                 }
-            }
 
-            // Render link unfurls (attachments) if present
-            if let Some(attachments) = message.get("attachments").and_then(|a| a.as_array()) {
-                for attachment in attachments {
-                    let unfurl = render_link_unfurl(attachment);
-                    if !unfurl.is_empty() {
-                        writeln!(writer, "\n{}", unfurl).map_err(|e| AppError::WriteFile {
-                            path: output_path.to_string(),
-                            source: e,
-                        })?;
-                    }
+                // Write rich links with metadata
+                for link in &rich_links {
+                    write!(writer, "{}", link.render()).map_err(|e| AppError::WriteFile {
+                        path: output_path.to_string(),
+                        source: e,
+                    })?;
                 }
             }
 
@@ -381,82 +580,4 @@ fn render_message_to_markdown(
         .and_then(|t| t.as_str())
         .unwrap_or("")
         .to_string()
-}
-
-/// Render a link unfurl (attachment) to markdown
-fn render_link_unfurl(attachment: &serde_json::Value) -> String {
-    let mut parts: Vec<String> = Vec::new();
-
-    // Get title with optional link
-    let title = attachment.get("title").and_then(|t| t.as_str());
-    let title_link = attachment.get("title_link").and_then(|l| l.as_str());
-    let original_url = attachment.get("original_url").and_then(|u| u.as_str());
-
-    match (title, title_link.or(original_url)) {
-        (Some(t), Some(link)) => parts.push(format!("> **[{}]({})**", t, link)),
-        (Some(t), None) => parts.push(format!("> **{}**", t)),
-        (None, Some(link)) => parts.push(format!("> {}", link)),
-        (None, None) => {}
-    }
-
-    // Add author if present
-    if let Some(author) = attachment.get("author_name").and_then(|a| a.as_str()) {
-        let author_link = attachment.get("author_link").and_then(|l| l.as_str());
-        let author_text = match author_link {
-            Some(link) => format!("> *By [{}]({})*", author, link),
-            None => format!("> *By {}*", author),
-        };
-        parts.push(author_text);
-    }
-
-    // Add service name if present and different from author
-    if let Some(service) = attachment.get("service_name").and_then(|s| s.as_str()) {
-        let author = attachment
-            .get("author_name")
-            .and_then(|a| a.as_str())
-            .unwrap_or("");
-        if service != author {
-            parts.push(format!("> *From {}*", service));
-        }
-    }
-
-    // Add description from text or description field
-    let description = attachment
-        .get("text")
-        .or_else(|| attachment.get("description"))
-        .and_then(|t| t.as_str())
-        .filter(|s| !s.is_empty());
-
-    if let Some(desc) = description {
-        // Quote each line of the description
-        let quoted: String = desc
-            .lines()
-            .map(|line| format!("> {}", line))
-            .collect::<Vec<_>>()
-            .join("\n");
-        parts.push(quoted);
-    }
-
-    // Add preview image (check multiple possible fields for video thumbnails and images)
-    let image_url = attachment
-        .get("image_url")
-        .or_else(|| attachment.get("thumb_url"))
-        .or_else(|| attachment.get("video_thumbnail_url"))
-        .or_else(|| attachment.get("thumb_720"))
-        .or_else(|| attachment.get("thumb_480"))
-        .or_else(|| attachment.get("thumb_360"))
-        .and_then(|u| u.as_str());
-
-    if let Some(img) = image_url {
-        // Use the title as alt text if available, otherwise use "preview"
-        let alt_text = title.unwrap_or("preview");
-        parts.push(format!("> ![{}]({})", alt_text, img));
-    }
-
-    // Add footer if present
-    if let Some(footer) = attachment.get("footer").and_then(|f| f.as_str()) {
-        parts.push(format!("> _{}_", footer));
-    }
-
-    parts.join("\n")
 }
