@@ -12,6 +12,15 @@ async fn main() {
         }
         Commands::ExportUsers { output } => slack_utils::run_export_users_async(&output).await,
         Commands::ExportChannels { output } => slack_utils::run_export_channels_async(&output).await,
+        Commands::DownloadAttachments { input, output } => {
+            slack_utils::run_download_attachments(&input, &output)
+        }
+        Commands::ExportMarkdown {
+            conversations,
+            users,
+            channels,
+            output,
+        } => slack_utils::run_export_markdown(&conversations, &users, &channels, &output),
     };
 
     if let Err(e) = result {
