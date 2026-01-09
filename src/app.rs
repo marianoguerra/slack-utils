@@ -113,6 +113,9 @@ impl App {
                     output_path,
                     selected_channels,
                 } => {
+                    let progress_callback = |current: usize, total: usize, name: &str| {
+                        let _ = progress_tx.send((current, total, name.to_string()));
+                    };
                     let result = rt.block_on(async {
                         let from = parse_date(&from_date)?;
                         let to = parse_date(&to_date)?;
@@ -122,6 +125,7 @@ impl App {
                             to,
                             Path::new(&output_path),
                             Some(&selected_channels),
+                            Some(progress_callback),
                         )
                         .await?;
                         Ok::<_, AppError>(format!("Exported {} messages to {}", count, output_path))

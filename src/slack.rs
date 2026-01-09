@@ -7,7 +7,7 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use slack_morphism::prelude::*;
 
-use crate::{AppError, Result};
+use crate::{AppError, ProgressCallback, Result};
 
 /// Type alias for loaded conversation data: (channel_id, channel_name, messages)
 pub type LoadedConversations = (
@@ -169,13 +169,23 @@ pub async fn export_channels(token: &str, output_path: &Path) -> Result<usize> {
     Ok(count)
 }
 
-pub async fn export_conversations(
+pub async fn export_conversations<F>(
     token: &str,
     from_date: NaiveDate,
     to_date: NaiveDate,
     output_path: &Path,
     selected_channel_ids: Option<&HashSet<String>>,
-) -> Result<usize> {
+    progress_callback: Option<F>,
+) -> Result<usize>
+where
+    F: Fn(usize, usize, &str),
+{
+    let report_progress = |current: usize, total: usize, msg: &str| {
+        if let Some(ref cb) = progress_callback {
+            cb(current, total, msg);
+        }
+    };
+
     let client = SlackClient::new(
         SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
     );
@@ -184,6 +194,8 @@ pub async fn export_conversations(
 
     let oldest_ts = date_to_slack_ts(from_date);
     let latest_ts = date_to_slack_ts(to_date.succ_opt().unwrap_or(to_date));
+
+    report_progress(0, 0, "Fetching channel list...");
 
     let mut all_channels = Vec::new();
     let mut cursor: Option<SlackCursorId> = None;
@@ -212,20 +224,30 @@ pub async fn export_conversations(
         }
     }
 
+    // Filter to selected channels
+    let channels_to_fetch: Vec<_> = all_channels
+        .iter()
+        .filter(|ch| {
+            selected_channel_ids
+                .map(|selected| selected.contains(&ch.id.0))
+                .unwrap_or(true)
+        })
+        .collect();
+
+    let total_channels = channels_to_fetch.len();
     let mut all_conversations = Vec::new();
 
-    for channel in &all_channels {
+    for (channel_idx, channel) in channels_to_fetch.iter().enumerate() {
         let channel_id = &channel.id;
-
-        if let Some(selected) = selected_channel_ids
-            && !selected.contains(&channel_id.0)
-        {
-            continue;
-        }
-
         let channel_name = channel.name.clone().unwrap_or_else(|| "unknown".to_string());
 
-        let mut messages = Vec::new();
+        report_progress(
+            channel_idx + 1,
+            total_channels,
+            &format!("Fetching #{}", channel_name),
+        );
+
+        let mut messages: Vec<SlackHistoryMessage> = Vec::new();
         let mut msg_cursor: Option<SlackCursorId> = None;
 
         loop {
@@ -254,14 +276,91 @@ pub async fn export_conversations(
             }
         }
 
-        if !messages.is_empty() {
+        // Count messages with replies for progress reporting
+        let messages_with_thread: Vec<_> = messages
+            .iter()
+            .filter(|m| m.parent.reply_count.map(|c| c > 0).unwrap_or(false))
+            .collect();
+        let total_threads = messages_with_thread.len();
+
+        // Fetch thread replies for messages that have them
+        let mut messages_with_replies: Vec<serde_json::Value> = Vec::new();
+        let mut thread_idx = 0;
+
+        for message in messages {
+            let mut msg_value = serde_json::to_value(&message)
+                .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+
+            // Check if message has replies
+            if let Some(reply_count) = message.parent.reply_count
+                && reply_count > 0
+            {
+                thread_idx += 1;
+                report_progress(
+                    thread_idx,
+                    total_threads,
+                    &format!("#{} - fetching thread {}/{}", channel_name, thread_idx, total_threads),
+                );
+
+                let mut replies: Vec<SlackHistoryMessage> = Vec::new();
+                let mut reply_cursor: Option<SlackCursorId> = None;
+
+                loop {
+                    let request = SlackApiConversationsRepliesRequest::new(
+                        channel_id.clone(),
+                        message.origin.ts.clone(),
+                    )
+                    .with_limit(200)
+                    .opt_cursor(reply_cursor);
+
+                    match session.conversations_replies(&request).await {
+                        Ok(response) => {
+                            // Skip the first message (parent) if it matches our message ts
+                            let thread_replies: Vec<_> = response
+                                .messages
+                                .into_iter()
+                                .filter(|m| m.origin.ts != message.origin.ts)
+                                .collect();
+                            replies.extend(thread_replies);
+
+                            match response.response_metadata {
+                                Some(meta)
+                                    if meta.next_cursor.is_some()
+                                        && !meta
+                                            .next_cursor
+                                            .as_ref()
+                                            .unwrap()
+                                            .0
+                                            .is_empty() =>
+                                {
+                                    reply_cursor = meta.next_cursor;
+                                }
+                                _ => break,
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+
+                if !replies.is_empty() {
+                    msg_value["thread_replies"] = serde_json::to_value(&replies)
+                        .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+                }
+            }
+
+            messages_with_replies.push(msg_value);
+        }
+
+        if !messages_with_replies.is_empty() {
             all_conversations.push(ConversationExport {
                 channel_id: channel_id.0.clone(),
                 channel_name,
-                messages,
+                messages: messages_with_replies,
             });
         }
     }
+
+    report_progress(total_channels, total_channels, "Writing output file...");
 
     let total_messages: usize = all_conversations.iter().map(|c| c.messages.len()).sum();
     write_json(output_path, &all_conversations)?;
@@ -273,7 +372,7 @@ pub async fn export_conversations(
 struct ConversationExport {
     channel_id: String,
     channel_name: String,
-    messages: Vec<SlackHistoryMessage>,
+    messages: Vec<serde_json::Value>,
 }
 
 fn date_to_slack_ts(date: NaiveDate) -> SlackTs {
@@ -457,7 +556,7 @@ pub fn download_attachments(
     token: &str,
     conversations_path: &str,
     output_dir: &Path,
-    progress_callback: Option<&dyn Fn(usize, usize, &str)>,
+    progress_callback: ProgressCallback,
 ) -> Result<DownloadResult> {
     let files = extract_files_from_conversations(conversations_path)?;
     let total = files.len();

@@ -26,8 +26,23 @@ pub async fn run_export_conversations(
         from_date, to_date, output
     );
 
-    let count =
-        slack::export_conversations(&token, from_date, to_date, Path::new(output), None).await?;
+    let progress_callback = |current: usize, total: usize, name: &str| {
+        if total > 0 {
+            println!("  [{}/{}] {}", current, total, name);
+        } else {
+            println!("  {}", name);
+        }
+    };
+
+    let count = slack::export_conversations(
+        &token,
+        from_date,
+        to_date,
+        Path::new(output),
+        None,
+        Some(progress_callback),
+    )
+    .await?;
 
     println!(
         "Export completed successfully! {} messages exported.",

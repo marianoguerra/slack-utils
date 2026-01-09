@@ -24,6 +24,9 @@ mod widgets;
 pub use cli::{Cli, Commands};
 pub use error::{AppError, Result};
 
+/// Type alias for progress callback functions
+pub type ProgressCallback<'a> = Option<&'a dyn Fn(usize, usize, &str)>;
+
 // Re-export command functions for main.rs compatibility
 pub use commands::run_download_attachments;
 pub use commands::run_export_channels as run_export_channels_async;

@@ -49,11 +49,11 @@ pub enum MenuItem {
 impl MenuItem {
     pub fn all() -> Vec<MenuItem> {
         vec![
-            MenuItem::ExportConversations,
             MenuItem::ExportUsers,
             MenuItem::ExportChannels,
-            MenuItem::EditConversations,
+            MenuItem::ExportConversations,
             MenuItem::DownloadAttachments,
+            MenuItem::EditConversations,
             MenuItem::SelectedConversationsToMarkdown,
             MenuItem::Exit,
         ]
@@ -61,12 +61,12 @@ impl MenuItem {
 
     pub fn label(&self) -> &'static str {
         match self {
-            MenuItem::ExportConversations => "Export Conversations in Date Range",
-            MenuItem::ExportUsers => "Export Users",
-            MenuItem::ExportChannels => "Export Channels",
-            MenuItem::EditConversations => "Edit Conversations",
+            MenuItem::ExportUsers => "Fetch Users",
+            MenuItem::ExportChannels => "Fetch Channels",
+            MenuItem::ExportConversations => "Fetch Conversations in Date Range",
             MenuItem::DownloadAttachments => "Download Attachments",
-            MenuItem::SelectedConversationsToMarkdown => "Selected Conversations to Markdown",
+            MenuItem::EditConversations => "Edit Conversations",
+            MenuItem::SelectedConversationsToMarkdown => "Export Conversations to Markdown",
             MenuItem::Exit => "Exit",
         }
     }

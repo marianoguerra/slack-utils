@@ -7,6 +7,7 @@ use slack_morphism::prelude::{SlackBlock, SlackChannelId, SlackUserId};
 use webpage::{Webpage, WebpageOptions};
 
 use crate::error::{AppError, Result};
+use crate::ProgressCallback;
 
 /// Truncate a URL for display
 fn truncate_url(url: &str, max_len: usize) -> String {
@@ -55,7 +56,7 @@ pub fn export_conversations_to_markdown_with_progress(
     users_path: &str,
     channels_path: &str,
     output_path: &str,
-    progress_callback: Option<&dyn Fn(usize, usize, &str)>,
+    progress_callback: ProgressCallback,
 ) -> Result<usize> {
     let report_progress = |current: usize, total: usize, msg: &str| {
         if let Some(cb) = progress_callback {
@@ -419,12 +420,16 @@ fn render_link_unfurl(attachment: &serde_json::Value) -> String {
         }
     }
 
-    // Add description/text
-    if let Some(text) = attachment.get("text").and_then(|t| t.as_str())
-        && !text.is_empty()
-    {
+    // Add description from text or description field
+    let description = attachment
+        .get("text")
+        .or_else(|| attachment.get("description"))
+        .and_then(|t| t.as_str())
+        .filter(|s| !s.is_empty());
+
+    if let Some(desc) = description {
         // Quote each line of the description
-        let quoted: String = text
+        let quoted: String = desc
             .lines()
             .map(|line| format!("> {}", line))
             .collect::<Vec<_>>()
@@ -432,13 +437,20 @@ fn render_link_unfurl(attachment: &serde_json::Value) -> String {
         parts.push(quoted);
     }
 
-    // Add preview image
+    // Add preview image (check multiple possible fields for video thumbnails and images)
     let image_url = attachment
         .get("image_url")
         .or_else(|| attachment.get("thumb_url"))
+        .or_else(|| attachment.get("video_thumbnail_url"))
+        .or_else(|| attachment.get("thumb_720"))
+        .or_else(|| attachment.get("thumb_480"))
+        .or_else(|| attachment.get("thumb_360"))
         .and_then(|u| u.as_str());
+
     if let Some(img) = image_url {
-        parts.push(format!("> ![preview]({})", img));
+        // Use the title as alt text if available, otherwise use "preview"
+        let alt_text = title.unwrap_or("preview");
+        parts.push(format!("> ![{}]({})", alt_text, img));
     }
 
     // Add footer if present
