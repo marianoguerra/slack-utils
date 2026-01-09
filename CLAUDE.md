@@ -48,3 +48,9 @@ After each change, run:
 cargo test
 cargo clippy
 ```
+
+When asked to update deps, run the following command to see the newest version, ask if the user wants Compat or Latest update if not specified:
+
+```bash
+cargo outdated -R
+```
