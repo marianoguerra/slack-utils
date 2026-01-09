@@ -1,0 +1,6 @@
+/target
+/.env
+/channels.json
+/conversations.json
+/users.json
+/settings.toml
