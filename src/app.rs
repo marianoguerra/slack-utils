@@ -181,6 +181,30 @@ impl App {
                     };
                     let _ = tx.send(AsyncResult::ExportComplete(msg));
                 }
+                ExportTask::ExportEmojis {
+                    output_path,
+                    emojis_folder,
+                } => {
+                    let progress_callback = |current: usize, total: usize, name: &str| {
+                        let _ = progress_tx.send((current, total, name.to_string()));
+                    };
+                    let result = rt.block_on(async {
+                        let r = slack::fetch_emojis(
+                            &token,
+                            Path::new(&output_path),
+                            Path::new(&emojis_folder),
+                            Some(&progress_callback),
+                        )
+                        .await?;
+                        Ok::<_, AppError>(format!(
+                            "Fetched {} emojis to {} ({} downloaded, {} skipped, {} failed)",
+                            r.total, output_path, r.downloaded, r.skipped, r.failed
+                        ))
+                    });
+                    let _ = tx.send(AsyncResult::ExportComplete(
+                        result.map_err(|e| e.to_string()),
+                    ));
+                }
             }
         });
     }

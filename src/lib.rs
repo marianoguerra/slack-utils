@@ -33,6 +33,7 @@ pub use commands::run_export_channels as run_export_channels_async;
 pub use commands::run_export_conversations as run_export_conversations_async;
 pub use commands::run_export_markdown;
 pub use commands::run_export_users as run_export_users_async;
+pub use commands::run_export_emojis as run_export_emojis_async;
 
 /// Constant for the channels file
 pub const CHANNELS_FILE: &str = "channels.json";

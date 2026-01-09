@@ -4,6 +4,7 @@ mod download_attachments;
 mod edit_conversations;
 mod export_conversations;
 mod export_simple;
+mod export_emojis;
 mod loading;
 mod main_menu;
 mod markdown_export;
@@ -86,6 +87,11 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             *active_field,
             chunks[1],
         ),
+        Screen::ExportEmojis {
+            output_path,
+            emojis_folder,
+            active_field,
+        } => export_emojis::render(f, output_path, emojis_folder, *active_field, chunks[1]),
         Screen::EditConversationsPathInput {
             conversations_path,
             users_path,

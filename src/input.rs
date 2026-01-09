@@ -8,7 +8,7 @@ use crate::app::App;
 use crate::slack;
 use crate::ui::types::{
     AsyncResult, ConvExportField, DownloadAttachmentsField, EditConvPathField,
-    EditableChannelList, ExportTask, MarkdownExportField, MenuItem, Screen,
+    EditableChannelList, ExportEmojisField, ExportTask, MarkdownExportField, MenuItem, Screen,
 };
 use crate::widgets::TextInput;
 
@@ -56,6 +56,13 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                             channels_path: "./channels.json".to_string(),
                             output_path: "./selected-conversations.md".to_string(),
                             active_field: MarkdownExportField::Conversations,
+                        };
+                    }
+                    MenuItem::ExportEmojis => {
+                        app.screen = Screen::ExportEmojis {
+                            output_path: "emojis.json".to_string(),
+                            emojis_folder: "emojis".to_string(),
+                            active_field: ExportEmojisField::OutputPath,
                         };
                     }
                     MenuItem::Exit => app.should_quit = true,
@@ -325,6 +332,51 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 };
                 app.screen = Screen::Loading {
                     message: "Exporting to markdown...".to_string(),
+                    progress: None,
+                };
+                app.start_task(task);
+            }
+            _ => {}
+        },
+        Screen::ExportEmojis {
+            output_path,
+            emojis_folder,
+            active_field,
+        } => match key.code {
+            KeyCode::Esc => app.screen = Screen::MainMenu,
+            KeyCode::Tab => {
+                *active_field = match active_field {
+                    ExportEmojisField::OutputPath => ExportEmojisField::EmojisFolder,
+                    ExportEmojisField::EmojisFolder => ExportEmojisField::OutputPath,
+                };
+            }
+            KeyCode::BackTab => {
+                *active_field = match active_field {
+                    ExportEmojisField::OutputPath => ExportEmojisField::EmojisFolder,
+                    ExportEmojisField::EmojisFolder => ExportEmojisField::OutputPath,
+                };
+            }
+            KeyCode::Char(c) => {
+                let field = match active_field {
+                    ExportEmojisField::OutputPath => output_path,
+                    ExportEmojisField::EmojisFolder => emojis_folder,
+                };
+                field.push(c);
+            }
+            KeyCode::Backspace => {
+                let field = match active_field {
+                    ExportEmojisField::OutputPath => output_path,
+                    ExportEmojisField::EmojisFolder => emojis_folder,
+                };
+                field.pop();
+            }
+            KeyCode::Enter => {
+                let task = ExportTask::ExportEmojis {
+                    output_path: output_path.clone(),
+                    emojis_folder: emojis_folder.clone(),
+                };
+                app.screen = Screen::Loading {
+                    message: "Exporting custom emojis...".to_string(),
                     progress: None,
                 };
                 app.start_task(task);

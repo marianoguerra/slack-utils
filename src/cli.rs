@@ -71,4 +71,15 @@ pub enum Commands {
         #[arg(short, long, default_value = "selected-conversations.md")]
         output: String,
     },
+
+    /// Export custom emojis from Slack
+    ExportEmojis {
+        /// Output JSON file path for emoji data
+        #[arg(short, long, default_value = "emojis.json")]
+        output: String,
+
+        /// Folder to download emoji images
+        #[arg(short, long, default_value = "emojis")]
+        folder: String,
+    },
 }

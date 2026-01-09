@@ -21,6 +21,9 @@ async fn main() {
             channels,
             output,
         } => slack_utils::run_export_markdown(&conversations, &users, &channels, &output),
+        Commands::ExportEmojis { output, folder } => {
+            slack_utils::run_export_emojis_async(&output, &folder).await
+        }
     };
 
     if let Err(e) = result {

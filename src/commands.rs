@@ -94,6 +94,9 @@ pub fn run_download_attachments(input: &str, output: &str) -> Result<()> {
         "Download completed! {} files downloaded, {} skipped, {} failed.",
         result.downloaded, result.skipped, result.failed
     );
+    for error in &result.errors {
+        eprintln!("  {}", error);
+    }
     Ok(())
 }
 
@@ -111,5 +114,34 @@ pub fn run_export_markdown(
         "Export completed successfully! {} messages exported to {}",
         count, output
     );
+    Ok(())
+}
+
+pub async fn run_export_emojis(output: &str, folder: &str) -> Result<()> {
+    let token = load_token()?;
+
+    println!("Exporting custom emojis to {} (images to {})...", output, folder);
+
+    let result = slack::fetch_emojis(
+        &token,
+        Path::new(output),
+        Path::new(folder),
+        Some(&|current, total, name| {
+            if total > 0 {
+                println!("  [{}/{}] {}", current, total, name);
+            } else {
+                println!("  {}", name);
+            }
+        }),
+    )
+    .await?;
+
+    println!(
+        "Export completed! {} emojis total ({} downloaded, {} skipped, {} failed).",
+        result.total, result.downloaded, result.skipped, result.failed
+    );
+    for error in &result.errors {
+        eprintln!("  {}", error);
+    }
     Ok(())
 }

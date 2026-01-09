@@ -486,6 +486,7 @@ pub struct DownloadResult {
     pub downloaded: usize,
     pub failed: usize,
     pub skipped: usize,
+    pub errors: Vec<String>,
 }
 
 /// Extract file information from a conversations.json file
@@ -566,6 +567,7 @@ pub fn download_attachments(
             downloaded: 0,
             failed: 0,
             skipped: 0,
+            errors: Vec::new(),
         });
     }
 
@@ -579,6 +581,7 @@ pub fn download_attachments(
     let mut downloaded = 0;
     let mut failed = 0;
     let mut skipped = 0;
+    let mut errors = Vec::new();
 
     for (idx, file_info) in files.iter().enumerate() {
         if let Some(cb) = progress_callback {
@@ -598,7 +601,7 @@ pub fn download_attachments(
         };
         let id_dir = output_dir.join(folder_name);
         if let Err(e) = std::fs::create_dir_all(&id_dir) {
-            eprintln!("Failed to create directory {}: {}", id_dir.display(), e);
+            errors.push(format!("Failed to create directory {}: {}", id_dir.display(), e));
             failed += 1;
             continue;
         }
@@ -627,29 +630,29 @@ pub fn download_attachments(
                     match response.bytes() {
                         Ok(bytes) => {
                             if let Err(e) = std::fs::write(&file_path, &bytes) {
-                                eprintln!("Failed to write {}: {}", file_path.display(), e);
+                                errors.push(format!("Failed to write {}: {}", file_path.display(), e));
                                 failed += 1;
                             } else {
                                 downloaded += 1;
                             }
                         }
                         Err(e) => {
-                            eprintln!("Failed to read response for {}: {}", file_info.name, e);
+                            errors.push(format!("Failed to read response for {}: {}", file_info.name, e));
                             failed += 1;
                         }
                     }
                 } else {
-                    eprintln!(
+                    errors.push(format!(
                         "HTTP {} for {}: {}",
                         response.status(),
                         file_info.name,
                         url
-                    );
+                    ));
                     failed += 1;
                 }
             }
             Err(e) => {
-                eprintln!("Failed to download {}: {}", file_info.name, e);
+                errors.push(format!("Failed to download {}: {}", file_info.name, e));
                 failed += 1;
             }
         }
@@ -659,5 +662,224 @@ pub fn download_attachments(
         downloaded,
         failed,
         skipped,
+        errors,
+    })
+}
+
+/// Result of fetching emojis
+#[derive(Debug)]
+pub struct EmojiResult {
+    pub total: usize,
+    pub downloaded: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub errors: Vec<String>,
+}
+
+/// Fetch custom emojis from Slack and optionally download images
+pub async fn fetch_emojis(
+    token: &str,
+    output_path: &Path,
+    emojis_folder: &Path,
+    progress_callback: ProgressCallback<'_>,
+) -> Result<EmojiResult> {
+    let report_progress = |current: usize, total: usize, msg: &str| {
+        if let Some(cb) = progress_callback {
+            cb(current, total, msg);
+        }
+    };
+
+    report_progress(0, 0, "Fetching emoji list...");
+
+    // Fetch emoji list using reqwest (emoji.list API)
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://slack.com/api/emoji.list")
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| AppError::SlackApi(format!("Failed to fetch emojis: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(AppError::SlackApi(format!(
+            "HTTP {} fetching emojis",
+            response.status()
+        )));
+    }
+
+    let emoji_response: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| AppError::JsonParse(format!("Failed to parse emoji response: {}", e)))?;
+
+    if emoji_response.get("ok").and_then(|v: &serde_json::Value| v.as_bool()) != Some(true) {
+        let error = emoji_response
+            .get("error")
+            .and_then(|e: &serde_json::Value| e.as_str())
+            .unwrap_or("unknown error");
+        return Err(AppError::SlackApi(format!("Emoji API error: {}", error)));
+    }
+
+    let emojis = emoji_response
+        .get("emoji")
+        .and_then(|e: &serde_json::Value| e.as_object())
+        .ok_or_else(|| AppError::JsonParse("No emoji object in response".to_string()))?;
+
+    let total = emojis.len();
+
+    // Save emoji data to JSON file
+    report_progress(0, total, "Saving emoji data...");
+    let file = File::create(output_path).map_err(|e| AppError::WriteFile {
+        path: output_path.display().to_string(),
+        source: e,
+    })?;
+    let writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(writer, &emojis)
+        .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+
+    // Create emojis folder
+    std::fs::create_dir_all(emojis_folder).map_err(|e| AppError::WriteFile {
+        path: emojis_folder.display().to_string(),
+        source: e,
+    })?;
+
+    // Separate emojis into real ones and aliases
+    let mut real_emojis: Vec<(&String, &str)> = Vec::new();
+    let mut aliases: Vec<(&String, &str)> = Vec::new(); // (alias_name, target_name)
+
+    for (name, url_value) in emojis.iter() {
+        if let Some(url) = url_value.as_str() {
+            if let Some(target) = url.strip_prefix("alias:") {
+                aliases.push((name, target));
+            } else {
+                real_emojis.push((name, url));
+            }
+        }
+    }
+
+    // Download real emoji images and track their extensions
+    let mut downloaded = 0;
+    let mut failed = 0;
+    let mut skipped = 0;
+    let mut copied = 0;
+    let mut errors = Vec::new();
+    let mut emoji_extensions: std::collections::HashMap<&str, String> =
+        std::collections::HashMap::new();
+
+    let real_count = real_emojis.len();
+    for (idx, (name, url)) in real_emojis.iter().enumerate() {
+        report_progress(idx + 1, total, name);
+
+        // Extract file extension from URL
+        let ext = url
+            .split('.')
+            .next_back()
+            .and_then(|s: &str| s.split('?').next())
+            .unwrap_or("png")
+            .to_string();
+
+        emoji_extensions.insert(name.as_str(), ext.clone());
+
+        let filename = format!("{}.{}", name, ext);
+        let file_path = emojis_folder.join(&filename);
+
+        // Skip if already exists
+        if file_path.exists() {
+            skipped += 1;
+            continue;
+        }
+
+        // Download emoji
+        match client
+            .get(*url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    match response.bytes().await {
+                        Ok(bytes) => {
+                            if let Err(e) = std::fs::write(&file_path, &bytes) {
+                                errors.push(format!("Failed to write {}: {}", filename, e));
+                                failed += 1;
+                            } else {
+                                downloaded += 1;
+                            }
+                        }
+                        Err(e) => {
+                            errors.push(format!("Failed to read emoji {}: {}", name, e));
+                            failed += 1;
+                        }
+                    }
+                } else {
+                    errors.push(format!("HTTP {} for emoji {}", response.status(), name));
+                    failed += 1;
+                }
+            }
+            Err(e) => {
+                errors.push(format!("Failed to download emoji {}: {}", name, e));
+                failed += 1;
+            }
+        }
+    }
+
+    // Copy files for aliases
+    for (idx, (alias_name, target_name)) in aliases.iter().enumerate() {
+        report_progress(real_count + idx + 1, total, &format!("{} -> {}", alias_name, target_name));
+
+        // Resolve the target (follow alias chains)
+        let mut current_target = *target_name;
+        let mut visited = std::collections::HashSet::new();
+        while let Some(url) = emojis.get(current_target).and_then(|v| v.as_str()) {
+            if let Some(next_target) = url.strip_prefix("alias:") {
+                if visited.contains(next_target) {
+                    break; // Circular alias, stop
+                }
+                visited.insert(current_target);
+                current_target = next_target;
+            } else {
+                break; // Found the real emoji
+            }
+        }
+
+        // Get the extension of the target emoji
+        let Some(ext) = emoji_extensions.get(current_target) else {
+            errors.push(format!("Alias {} target {} not found", alias_name, current_target));
+            failed += 1;
+            continue;
+        };
+
+        let source_filename = format!("{}.{}", current_target, ext);
+        let source_path = emojis_folder.join(&source_filename);
+        let dest_filename = format!("{}.{}", alias_name, ext);
+        let dest_path = emojis_folder.join(&dest_filename);
+
+        // Skip if already exists
+        if dest_path.exists() {
+            skipped += 1;
+            continue;
+        }
+
+        // Copy the file
+        if source_path.exists() {
+            if let Err(e) = std::fs::copy(&source_path, &dest_path) {
+                errors.push(format!("Failed to copy {} to {}: {}", source_filename, dest_filename, e));
+                failed += 1;
+            } else {
+                copied += 1;
+            }
+        } else {
+            errors.push(format!("Source file {} not found for alias {}", source_filename, alias_name));
+            failed += 1;
+        }
+    }
+
+    Ok(EmojiResult {
+        total,
+        downloaded: downloaded + copied,
+        failed,
+        skipped,
+        errors,
     })
 }

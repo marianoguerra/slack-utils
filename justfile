@@ -26,3 +26,27 @@ export-users:
 # Export channels
 export-channels:
     cargo run -- export-channels
+
+# Download attachments from conversations
+download-attachments:
+    cargo run -- download-attachments
+
+# Download attachments with custom paths
+download-attachments-custom input output:
+    cargo run -- download-attachments --input {{input}} --output {{output}}
+
+# Export selected conversations to markdown
+export-markdown:
+    cargo run -- export-markdown
+
+# Export selected conversations to markdown with custom paths
+export-markdown-custom conversations users channels output:
+    cargo run -- export-markdown --conversations {{conversations}} --users {{users}} --channels {{channels}} --output {{output}}
+
+# Export custom emojis
+export-emojis:
+    cargo run -- export-emojis
+
+# Export custom emojis with custom paths
+export-emojis-custom output folder:
+    cargo run -- export-emojis --output {{output}} --folder {{folder}}

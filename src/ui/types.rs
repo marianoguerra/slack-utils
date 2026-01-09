@@ -34,6 +34,12 @@ pub enum MarkdownExportField {
     Output,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ExportEmojisField {
+    OutputPath,
+    EmojisFolder,
+}
+
 // Menu item enum
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MenuItem {
@@ -43,6 +49,7 @@ pub enum MenuItem {
     EditConversations,
     DownloadAttachments,
     SelectedConversationsToMarkdown,
+    ExportEmojis,
     Exit,
 }
 
@@ -55,6 +62,7 @@ impl MenuItem {
             MenuItem::DownloadAttachments,
             MenuItem::EditConversations,
             MenuItem::SelectedConversationsToMarkdown,
+            MenuItem::ExportEmojis,
             MenuItem::Exit,
         ]
     }
@@ -67,6 +75,7 @@ impl MenuItem {
             MenuItem::DownloadAttachments => "Download Attachments",
             MenuItem::EditConversations => "Edit Conversations",
             MenuItem::SelectedConversationsToMarkdown => "Export Conversations to Markdown",
+            MenuItem::ExportEmojis => "Export Custom Emojis",
             MenuItem::Exit => "Exit",
         }
     }
@@ -627,6 +636,10 @@ pub enum ExportTask {
         channels_path: String,
         output_path: String,
     },
+    ExportEmojis {
+        output_path: String,
+        emojis_folder: String,
+    },
 }
 
 // Screen enum
@@ -685,6 +698,11 @@ pub enum Screen {
         channels_path: String,
         output_path: String,
         active_field: MarkdownExportField,
+    },
+    ExportEmojis {
+        output_path: String,
+        emojis_folder: String,
+        active_field: ExportEmojisField,
     },
     Loading {
         message: String,
