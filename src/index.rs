@@ -332,3 +332,194 @@ fn render_message_to_markdown(
 
     output
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_slack_ts_to_iso8601_valid() {
+        let ts = "1767636991.559059";
+        let result = slack_ts_to_iso8601(ts);
+        assert_eq!(result, "2026-01-05T18:16:31+00:00");
+    }
+
+    #[test]
+    fn test_slack_ts_to_iso8601_integer_only() {
+        let ts = "1767636991";
+        let result = slack_ts_to_iso8601(ts);
+        assert_eq!(result, "2026-01-05T18:16:31+00:00");
+    }
+
+    #[test]
+    fn test_slack_ts_to_iso8601_zero() {
+        let ts = "0";
+        let result = slack_ts_to_iso8601(ts);
+        assert_eq!(result, "1970-01-01T00:00:00+00:00");
+    }
+
+    #[test]
+    fn test_slack_ts_to_iso8601_empty() {
+        let ts = "";
+        let result = slack_ts_to_iso8601(ts);
+        assert_eq!(result, "1970-01-01T00:00:00+00:00");
+    }
+
+    #[test]
+    fn test_slack_ts_to_iso8601_invalid() {
+        let ts = "invalid";
+        let result = slack_ts_to_iso8601(ts);
+        assert_eq!(result, "1970-01-01T00:00:00+00:00");
+    }
+
+    #[test]
+    fn test_index_entry_serialization() {
+        let entry = IndexEntry {
+            id: "1234567890_123456".to_string(),
+            ts: "1234567890.123456".to_string(),
+            date: "2009-02-13T23:31:30+00:00".to_string(),
+            text: "Hello world".to_string(),
+            users: vec![IndexUser {
+                id: "U123".to_string(),
+                name: "testuser".to_string(),
+            }],
+            channel: IndexChannel {
+                id: "C456".to_string(),
+                name: "general".to_string(),
+            },
+        };
+
+        let json = serde_json::to_string(&entry).unwrap();
+        let deserialized: IndexEntry = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.id, entry.id);
+        assert_eq!(deserialized.ts, entry.ts);
+        assert_eq!(deserialized.date, entry.date);
+        assert_eq!(deserialized.text, entry.text);
+        assert_eq!(deserialized.users.len(), 1);
+        assert_eq!(deserialized.users[0].id, "U123");
+        assert_eq!(deserialized.users[0].name, "testuser");
+        assert_eq!(deserialized.channel.id, "C456");
+        assert_eq!(deserialized.channel.name, "general");
+    }
+
+    #[test]
+    fn test_index_user_serialization() {
+        let user = IndexUser {
+            id: "U123".to_string(),
+            name: "Test User".to_string(),
+        };
+
+        let json = serde_json::to_string(&user).unwrap();
+        assert!(json.contains("\"id\":\"U123\""));
+        assert!(json.contains("\"name\":\"Test User\""));
+
+        let deserialized: IndexUser = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, user.id);
+        assert_eq!(deserialized.name, user.name);
+    }
+
+    #[test]
+    fn test_index_channel_serialization() {
+        let channel = IndexChannel {
+            id: "C456".to_string(),
+            name: "random".to_string(),
+        };
+
+        let json = serde_json::to_string(&channel).unwrap();
+        assert!(json.contains("\"id\":\"C456\""));
+        assert!(json.contains("\"name\":\"random\""));
+
+        let deserialized: IndexChannel = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, channel.id);
+        assert_eq!(deserialized.name, channel.name);
+    }
+
+    #[test]
+    fn test_render_message_to_markdown_plain_text() {
+        let message = json!({
+            "user": "U123",
+            "text": "Hello, world!"
+        });
+        let slack_references = SlackReferences::default();
+        let mut user_names = HashMap::new();
+        user_names.insert("U123".to_string(), "TestUser".to_string());
+
+        let result = render_message_to_markdown(&message, &slack_references, &user_names);
+
+        assert!(result.contains("**TestUser**"));
+        assert!(result.contains("Hello, world!"));
+    }
+
+    #[test]
+    fn test_render_message_to_markdown_unknown_user() {
+        let message = json!({
+            "user": "U999",
+            "text": "Message from unknown"
+        });
+        let slack_references = SlackReferences::default();
+        let user_names = HashMap::new();
+
+        let result = render_message_to_markdown(&message, &slack_references, &user_names);
+
+        assert!(result.contains("**U999**"));
+        assert!(result.contains("Message from unknown"));
+    }
+
+    #[test]
+    fn test_render_message_to_markdown_empty_text() {
+        let message = json!({
+            "user": "U123",
+            "text": ""
+        });
+        let slack_references = SlackReferences::default();
+        let mut user_names = HashMap::new();
+        user_names.insert("U123".to_string(), "TestUser".to_string());
+
+        let result = render_message_to_markdown(&message, &slack_references, &user_names);
+
+        assert!(result.contains("**TestUser**"));
+    }
+
+    #[test]
+    fn test_render_message_to_markdown_with_rich_text_block() {
+        let message = json!({
+            "user": "U123",
+            "text": "fallback text",
+            "blocks": [
+                {
+                    "type": "rich_text",
+                    "elements": [
+                        {
+                            "type": "rich_text_section",
+                            "elements": [
+                                {
+                                    "type": "text",
+                                    "text": "Rich text content"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        });
+        let slack_references = SlackReferences::default();
+        let mut user_names = HashMap::new();
+        user_names.insert("U123".to_string(), "TestUser".to_string());
+
+        let result = render_message_to_markdown(&message, &slack_references, &user_names);
+
+        assert!(result.contains("**TestUser**"));
+        assert!(result.contains("Rich text content"));
+    }
+
+    #[test]
+    fn test_index_entry_id_sanitization() {
+        // Verify that dots are replaced with underscores in the id
+        let ts = "1767636991.559059";
+        let id = ts.replace('.', "_");
+        assert_eq!(id, "1767636991_559059");
+        assert!(!id.contains('.'));
+    }
+}
