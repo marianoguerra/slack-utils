@@ -86,15 +86,6 @@ impl MenuItem {
 pub struct ExtractedLink {
     pub url: String,
     pub title: String,
-    #[allow(dead_code)]
-    pub source: LinkSource,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub enum LinkSource {
-    Attachment(usize),
-    Block,
 }
 
 // Editable message type
@@ -145,14 +136,6 @@ impl EditableMessage {
         self.original.get("user").and_then(|u| u.as_str())
     }
 
-    #[allow(dead_code)]
-    pub fn ts(&self) -> &str {
-        self.original
-            .get("ts")
-            .and_then(|t| t.as_str())
-            .unwrap_or("")
-    }
-
     pub fn files(&self) -> Vec<&serde_json::Value> {
         self.original
             .get("files")
@@ -165,7 +148,7 @@ impl EditableMessage {
         let mut links = Vec::new();
 
         if let Some(attachments) = original.get("attachments").and_then(|a| a.as_array()) {
-            for (idx, att) in attachments.iter().enumerate() {
+            for att in attachments {
                 let url = att
                     .get("original_url")
                     .or_else(|| att.get("from_url"))
@@ -181,7 +164,6 @@ impl EditableMessage {
                     links.push(ExtractedLink {
                         url: url.to_string(),
                         title: title.to_string(),
-                        source: LinkSource::Attachment(idx),
                     });
                 }
             }
@@ -217,7 +199,6 @@ impl EditableMessage {
                         links.push(ExtractedLink {
                             url: url.to_string(),
                             title: title.to_string(),
-                            source: LinkSource::Block,
                         });
                     }
                 }

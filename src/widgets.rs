@@ -23,16 +23,6 @@ impl TextInput {
         &self.text
     }
 
-    #[allow(dead_code)]
-    pub fn into_text(self) -> String {
-        self.text
-    }
-
-    #[allow(dead_code)]
-    pub fn cursor_position(&self) -> usize {
-        self.cursor
-    }
-
     /// Handle a key event, returns true if the event was handled
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
         match (key.code, key.modifiers) {

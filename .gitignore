@@ -4,3 +4,8 @@
 /conversations.json
 /users.json
 /settings.toml
+/selected-conversations.json
+/selected-conversations.md
+/emojis.json
+/emojis/
+/attachments/
