@@ -51,6 +51,29 @@ pub enum Commands {
         format: String,
     },
 
+    /// Archive conversations for a range of ISO weeks (parquet format)
+    ArchiveRange {
+        /// Start ISO year (defaults to current year)
+        #[arg(long, default_value_t = 0)]
+        from_year: i32,
+
+        /// Start ISO week number 1-53 (defaults to current week)
+        #[arg(long, default_value_t = 0)]
+        from_week: u32,
+
+        /// End ISO year (defaults to from-year)
+        #[arg(long)]
+        to_year: Option<i32>,
+
+        /// End ISO week number 1-53 (defaults to from-week)
+        #[arg(long)]
+        to_week: Option<u32>,
+
+        /// Output directory path for parquet files
+        #[arg(short, long, default_value = "conversations")]
+        output: String,
+    },
+
     /// Export users
     ExportUsers {
         /// Output path (without extension)

@@ -8,9 +8,10 @@ use crate::app::App;
 use crate::slack;
 use crate::settings::Settings;
 use crate::ui::types::{
-    AsyncResult, ConvExportField, ConvExportWeekField, DownloadAttachmentsField, EditConvPathField,
-    EditableChannelList, ExportEmojisField, ExportIndexField, ExportTask, ImportMeilisearchField,
-    MarkdownExportField, MenuItem, QueryMeilisearchField, Screen,
+    ArchiveRangeField, AsyncResult, ConvExportField, ConvExportWeekField,
+    DownloadAttachmentsField, EditConvPathField, EditableChannelList, ExportEmojisField,
+    ExportIndexField, ExportTask, ImportMeilisearchField, MarkdownExportField, MenuItem,
+    QueryMeilisearchField, Screen,
 };
 use crate::widgets::TextInput;
 use crate::OutputFormat;
@@ -29,6 +30,9 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     }
                     MenuItem::ExportConversationsWeek => {
                         app.open_export_conversations_week();
+                    }
+                    MenuItem::ArchiveRange => {
+                        app.open_archive_range();
                     }
                     MenuItem::ExportUsers => {
                         app.screen = Screen::ExportUsers {
@@ -338,6 +342,69 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     field.handle_key(key);
                 }
                 _ => {}
+            }
+        }
+        Screen::ArchiveRange {
+            from_year,
+            from_week,
+            to_year,
+            to_week,
+            output_path,
+            active_field,
+        } => {
+            match key.code {
+                KeyCode::Esc => app.screen = Screen::MainMenu,
+                KeyCode::Tab => {
+                    *active_field = match active_field {
+                        ArchiveRangeField::FromYear => ArchiveRangeField::FromWeek,
+                        ArchiveRangeField::FromWeek => ArchiveRangeField::ToYear,
+                        ArchiveRangeField::ToYear => ArchiveRangeField::ToWeek,
+                        ArchiveRangeField::ToWeek => ArchiveRangeField::OutputPath,
+                        ArchiveRangeField::OutputPath => ArchiveRangeField::FromYear,
+                    };
+                }
+                KeyCode::BackTab => {
+                    *active_field = match active_field {
+                        ArchiveRangeField::FromYear => ArchiveRangeField::OutputPath,
+                        ArchiveRangeField::FromWeek => ArchiveRangeField::FromYear,
+                        ArchiveRangeField::ToYear => ArchiveRangeField::FromWeek,
+                        ArchiveRangeField::ToWeek => ArchiveRangeField::ToYear,
+                        ArchiveRangeField::OutputPath => ArchiveRangeField::ToWeek,
+                    };
+                }
+                KeyCode::Enter => {
+                    let from_year_val: i32 = from_year.text().parse().unwrap_or(2024);
+                    let from_week_val: u32 = from_week.text().parse().unwrap_or(1);
+                    let to_year_val: i32 = to_year.text().parse().unwrap_or(from_year_val);
+                    let to_week_val: u32 = to_week.text().parse().unwrap_or(from_week_val);
+                    let output_path_str = output_path.text().to_string();
+
+                    let task = ExportTask::ArchiveRange {
+                        from_year: from_year_val,
+                        from_week: from_week_val,
+                        to_year: to_year_val,
+                        to_week: to_week_val,
+                        output_path: output_path_str,
+                    };
+                    app.screen = Screen::Loading {
+                        progress: None,
+                        message: format!(
+                            "Archiving conversations from {}-W{:02} to {}-W{:02}...",
+                            from_year_val, from_week_val, to_year_val, to_week_val
+                        ),
+                    };
+                    app.start_task(task);
+                }
+                _ => {
+                    let field = match active_field {
+                        ArchiveRangeField::FromYear => from_year,
+                        ArchiveRangeField::FromWeek => from_week,
+                        ArchiveRangeField::ToYear => to_year,
+                        ArchiveRangeField::ToWeek => to_week,
+                        ArchiveRangeField::OutputPath => output_path,
+                    };
+                    field.handle_key(key);
+                }
             }
         }
         Screen::ExportUsers { output_path } => match key.code {

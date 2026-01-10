@@ -64,6 +64,7 @@ pub use parquet::{write_channels_parquet, write_conversations_parquet, write_use
 pub type ProgressCallback<'a> = Option<&'a dyn Fn(usize, usize, &str)>;
 
 // Re-export command functions for main.rs compatibility
+pub use commands::run_archive_range as run_archive_range_async;
 pub use commands::run_download_attachments;
 pub use commands::run_export_channels as run_export_channels_async;
 pub use commands::run_export_conversations as run_export_conversations_async;

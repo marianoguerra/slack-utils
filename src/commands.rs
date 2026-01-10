@@ -127,6 +127,55 @@ pub async fn run_export_conversations_week(
     Ok(())
 }
 
+pub async fn run_archive_range(
+    from_year: i32,
+    from_week: u32,
+    to_year: Option<i32>,
+    to_week: Option<u32>,
+    output: &str,
+) -> Result<()> {
+    let token = load_token()?;
+
+    // Default to current ISO week if from_year/from_week are 0
+    let (default_year, default_week) = current_iso_week();
+    let from_year = if from_year == 0 { default_year } else { from_year };
+    let from_week = if from_week == 0 { default_week } else { from_week };
+
+    // Default to_year/to_week to from values if not specified
+    let to_year = to_year.unwrap_or(from_year);
+    let to_week = to_week.unwrap_or(from_week);
+
+    println!(
+        "Archiving conversations from {}-W{:02} to {}-W{:02} to {}...",
+        from_year, from_week, to_year, to_week, output
+    );
+
+    let progress_callback = |current: usize, total: usize, name: &str| {
+        if total > 0 {
+            println!("  [{}/{}] {}", current, total, name);
+        } else {
+            println!("  {}", name);
+        }
+    };
+
+    let result = slack::archive_range(
+        &token,
+        from_year,
+        from_week,
+        to_year,
+        to_week,
+        Path::new(output),
+        Some(progress_callback),
+    )
+    .await?;
+
+    println!(
+        "Archive completed! {} messages in {} weeks ({} skipped, {} rate limit waits).",
+        result.total_messages, result.weeks_processed, result.weeks_skipped, result.rate_limit_waits
+    );
+    Ok(())
+}
+
 pub async fn run_export_users(output: &str, format_str: &str) -> Result<()> {
     let token = load_token()?;
     let format: OutputFormat = format_str.parse()?;

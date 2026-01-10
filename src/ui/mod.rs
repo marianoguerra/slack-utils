@@ -1,5 +1,6 @@
 pub mod types;
 
+mod archive_range;
 mod download_attachments;
 mod edit_conversations;
 mod export_conversations;
@@ -74,6 +75,23 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             *active_field,
             channel_selection.as_mut(),
             *loading_channels,
+            chunks[1],
+        ),
+        Screen::ArchiveRange {
+            from_year,
+            from_week,
+            to_year,
+            to_week,
+            output_path,
+            active_field,
+        } => archive_range::render(
+            f,
+            from_year,
+            from_week,
+            to_year,
+            to_week,
+            output_path,
+            *active_field,
             chunks[1],
         ),
         Screen::ExportUsers { output_path } => {

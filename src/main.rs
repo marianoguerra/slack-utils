@@ -18,6 +18,9 @@ async fn main() {
         Commands::ExportConversationsWeek { year, week, output, format } => {
             slack_utils::run_export_conversations_week_async(year, week, &output, &format).await
         }
+        Commands::ArchiveRange { from_year, from_week, to_year, to_week, output } => {
+            slack_utils::run_archive_range_async(from_year, from_week, to_year, to_week, &output).await
+        }
         Commands::ExportUsers { output, format } => {
             slack_utils::run_export_users_async(&output, &format).await
         }

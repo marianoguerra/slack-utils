@@ -23,6 +23,15 @@ pub enum ConvExportWeekField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ArchiveRangeField {
+    FromYear,
+    FromWeek,
+    ToYear,
+    ToWeek,
+    OutputPath,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EditConvPathField {
     Conversations,
     Users,
@@ -79,6 +88,7 @@ pub enum QueryMeilisearchField {
 pub enum MenuItem {
     ExportConversations,
     ExportConversationsWeek,
+    ArchiveRange,
     ExportUsers,
     ExportChannels,
     EditConversations,
@@ -98,6 +108,7 @@ impl MenuItem {
             MenuItem::ExportChannels,
             MenuItem::ExportConversations,
             MenuItem::ExportConversationsWeek,
+            MenuItem::ArchiveRange,
             MenuItem::DownloadAttachments,
             MenuItem::EditConversations,
             MenuItem::SelectedConversationsToMarkdown,
@@ -115,6 +126,7 @@ impl MenuItem {
             MenuItem::ExportChannels => "Fetch Channels",
             MenuItem::ExportConversations => "Fetch Conversations in Date Range",
             MenuItem::ExportConversationsWeek => "Fetch Conversations for Work Week",
+            MenuItem::ArchiveRange => "Archive Conversations (Week Range)",
             MenuItem::DownloadAttachments => "Download Attachments",
             MenuItem::EditConversations => "Edit Conversations",
             MenuItem::SelectedConversationsToMarkdown => "Export Conversations to Markdown",
@@ -655,6 +667,13 @@ pub enum ExportTask {
         selected_channels: HashSet<String>,
         format: OutputFormat,
     },
+    ArchiveRange {
+        from_year: i32,
+        from_week: u32,
+        to_year: i32,
+        to_week: u32,
+        output_path: String,
+    },
     Users {
         output_path: String,
         format: OutputFormat,
@@ -711,6 +730,14 @@ pub enum Screen {
         active_field: ConvExportWeekField,
         channel_selection: Option<ChannelSelection>,
         loading_channels: bool,
+    },
+    ArchiveRange {
+        from_year: TextInput,
+        from_week: TextInput,
+        to_year: TextInput,
+        to_week: TextInput,
+        output_path: TextInput,
+        active_field: ArchiveRangeField,
     },
     ExportUsers {
         output_path: String,

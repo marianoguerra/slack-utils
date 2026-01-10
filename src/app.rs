@@ -11,8 +11,8 @@ use crate::meilisearch::import_index_to_meilisearch;
 use crate::settings::Settings;
 use crate::slack;
 use crate::ui::types::{
-    AsyncResult, ChannelSelection, ConvExportField, ConvExportWeekField, ExportTask, MenuItem,
-    Screen,
+    ArchiveRangeField, AsyncResult, ChannelSelection, ConvExportField, ConvExportWeekField,
+    ExportTask, MenuItem, Screen,
 };
 use crate::widgets::TextInput;
 use crate::{
@@ -167,6 +167,36 @@ impl App {
                         Ok::<_, AppError>(format!(
                             "Exported {} messages for {}-W{:02} to {}",
                             count, year, week, output_path
+                        ))
+                    });
+                    let _ = tx.send(AsyncResult::ExportComplete(
+                        result.map_err(|e| e.to_string()),
+                    ));
+                }
+                ExportTask::ArchiveRange {
+                    from_year,
+                    from_week,
+                    to_year,
+                    to_week,
+                    output_path,
+                } => {
+                    let progress_callback = |current: usize, total: usize, name: &str| {
+                        let _ = progress_tx.send((current, total, name.to_string()));
+                    };
+                    let result = rt.block_on(async {
+                        let r = slack::archive_range(
+                            &token,
+                            from_year,
+                            from_week,
+                            to_year,
+                            to_week,
+                            Path::new(&output_path),
+                            Some(progress_callback),
+                        )
+                        .await?;
+                        Ok::<_, AppError>(format!(
+                            "Archived {} messages in {} weeks ({} skipped, {} rate limit waits) to {}",
+                            r.total_messages, r.weeks_processed, r.weeks_skipped, r.rate_limit_waits, output_path
                         ))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
@@ -421,6 +451,19 @@ impl App {
             active_field: ConvExportWeekField::Year,
             channel_selection,
             loading_channels,
+        };
+    }
+
+    pub fn open_archive_range(&mut self) {
+        let (year, week) = current_iso_week();
+
+        self.screen = Screen::ArchiveRange {
+            from_year: TextInput::new(year.to_string()),
+            from_week: TextInput::new(week.to_string()),
+            to_year: TextInput::new(year.to_string()),
+            to_week: TextInput::new(week.to_string()),
+            output_path: TextInput::new("./conversations".to_string()),
+            active_field: ArchiveRangeField::FromYear,
         };
     }
 

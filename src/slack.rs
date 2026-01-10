@@ -2,12 +2,13 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
+use std::time::Duration;
 
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
 use slack_morphism::prelude::*;
 
-use crate::{parquet, AppError, OutputFormat, ProgressCallback, Result};
+use crate::{parquet, week_to_date_range, AppError, OutputFormat, ProgressCallback, Result};
 
 /// Type alias for loaded conversation data: (channel_id, channel_name, messages)
 pub type LoadedConversations = (
@@ -921,5 +922,188 @@ pub async fn fetch_emojis(
         failed,
         skipped,
         errors,
+    })
+}
+
+/// Result of archiving a range of weeks
+#[derive(Debug)]
+pub struct ArchiveRangeResult {
+    pub total_messages: usize,
+    pub weeks_processed: usize,
+    pub weeks_skipped: usize,
+    pub rate_limit_waits: usize,
+}
+
+/// Generate all ISO weeks in a range (inclusive)
+fn generate_weeks_in_range(
+    from_year: i32,
+    from_week: u32,
+    to_year: i32,
+    to_week: u32,
+) -> Vec<(i32, u32)> {
+    let mut weeks = Vec::new();
+    let mut year = from_year;
+    let mut week = from_week;
+
+    loop {
+        weeks.push((year, week));
+
+        if year == to_year && week == to_week {
+            break;
+        }
+
+        // Move to next week
+        week += 1;
+
+        // Check if we need to move to next year
+        // ISO weeks can be 52 or 53 depending on the year
+        let last_week_of_year = NaiveDate::from_ymd_opt(year, 12, 28)
+            .map(|d| d.iso_week().week())
+            .unwrap_or(52);
+
+        if week > last_week_of_year {
+            year += 1;
+            week = 1;
+        }
+
+        // Safety limit to prevent infinite loops
+        if weeks.len() > 520 {
+            // 10 years of weeks
+            break;
+        }
+    }
+
+    weeks
+}
+
+/// Check if an error is a rate limit error and extract retry-after seconds
+fn is_rate_limit_error(error: &str) -> Option<u64> {
+    let error_lower = error.to_lowercase();
+    if error_lower.contains("rate") && error_lower.contains("limit") {
+        // Default to 60 seconds if we can't parse the retry-after
+        Some(60)
+    } else if error_lower.contains("ratelimited") {
+        Some(60)
+    } else {
+        None
+    }
+}
+
+/// Archive conversations for a range of ISO weeks to parquet format
+pub async fn archive_range<F>(
+    token: &str,
+    from_year: i32,
+    from_week: u32,
+    to_year: i32,
+    to_week: u32,
+    output_path: &Path,
+    progress_callback: Option<F>,
+) -> Result<ArchiveRangeResult>
+where
+    F: Fn(usize, usize, &str),
+{
+    let report_progress = |current: usize, total: usize, msg: &str| {
+        if let Some(ref cb) = progress_callback {
+            cb(current, total, msg);
+        }
+    };
+
+    let weeks = generate_weeks_in_range(from_year, from_week, to_year, to_week);
+    let total_weeks = weeks.len();
+
+    let mut total_messages = 0usize;
+    let mut weeks_processed = 0usize;
+    let mut weeks_skipped = 0usize;
+    let mut rate_limit_waits = 0usize;
+
+    report_progress(
+        0,
+        total_weeks,
+        &format!("Archiving {} weeks...", total_weeks),
+    );
+
+    for (idx, (year, week)) in weeks.iter().enumerate() {
+        let week_label = format!("{}-W{:02}", year, week);
+
+        // Check if this week's data already exists
+        let week_dir = output_path.join(format!("year={}/week={:02}", year, week));
+        let parquet_file = week_dir.join("conversations.parquet");
+
+        if parquet_file.exists() {
+            report_progress(
+                idx + 1,
+                total_weeks,
+                &format!("{} - already exists, skipping", week_label),
+            );
+            weeks_skipped += 1;
+            continue;
+        }
+
+        report_progress(idx + 1, total_weeks, &format!("{} - fetching...", week_label));
+
+        // Convert week to date range
+        let (from_date, to_date) = week_to_date_range(*year, *week)?;
+
+        // Try to export with retry on rate limit
+        let mut retries = 0;
+        const MAX_RETRIES: u32 = 5;
+
+        loop {
+            match export_conversations(
+                token,
+                from_date,
+                to_date,
+                output_path,
+                None, // All channels
+                None::<fn(usize, usize, &str)>, // No sub-progress for individual weeks
+                OutputFormat::Parquet,
+            )
+            .await
+            {
+                Ok(count) => {
+                    total_messages += count;
+                    weeks_processed += 1;
+                    report_progress(
+                        idx + 1,
+                        total_weeks,
+                        &format!("{} - {} messages", week_label, count),
+                    );
+                    break;
+                }
+                Err(AppError::SlackApi(ref error_msg)) => {
+                    if let Some(wait_secs) = is_rate_limit_error(error_msg) {
+                        retries += 1;
+                        if retries > MAX_RETRIES {
+                            return Err(AppError::SlackApi(format!(
+                                "Rate limited {} times for {}, giving up",
+                                retries, week_label
+                            )));
+                        }
+
+                        rate_limit_waits += 1;
+                        report_progress(
+                            idx + 1,
+                            total_weeks,
+                            &format!(
+                                "{} - rate limited, waiting {}s (attempt {}/{})",
+                                week_label, wait_secs, retries, MAX_RETRIES
+                            ),
+                        );
+
+                        tokio::time::sleep(Duration::from_secs(wait_secs)).await;
+                        continue;
+                    }
+                    return Err(AppError::SlackApi(error_msg.clone()));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    Ok(ArchiveRangeResult {
+        total_messages,
+        weeks_processed,
+        weeks_skipped,
+        rate_limit_waits,
     })
 }
