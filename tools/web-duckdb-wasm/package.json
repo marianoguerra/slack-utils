@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun --hot serve.js",
     "build": "bun build app.js --outdir=dist --minify",
-    "serve": "bun serve.js"
+    "serve": "bun serve.js",
+    "serve-static": "bun static-file-server.js"
   },
   "devDependencies": {
     "@types/bun": "latest"

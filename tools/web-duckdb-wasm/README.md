@@ -10,27 +10,52 @@ A browser-based SQL query tool for Slack parquet exports using DuckDB-WASM.
 - Predefined sample queries for common statistics
 - All queries run locally in WebAssembly - no data leaves your browser
 
+## Two Server Modes
+
+### 1. API Server (`serve.js`)
+
+Backend provides API endpoints to list and serve parquet files.
+
+```bash
+bun run serve -- --path /path/to/parquet/files
+```
+
+Open http://localhost:3000
+
+### 2. Static File Server (`static-file-server.js`)
+
+Simple static file server - frontend discovers files by trying to fetch them based on Hive partition structure (ignoring 404s). Useful for deploying to any static file host.
+
+```bash
+bun run serve-static -- --path /path/to/parquet/files
+```
+
+Open http://localhost:3000
+
 ## Usage
 
-### Start the server
+### Install dependencies
 
 ```bash
 cd tools/web-duckdb-wasm
 bun install
-bun run serve -- --path /path/to/parquet/files
 ```
 
-Or from the project root:
+### Start a server
 
 ```bash
-cd tools/web-duckdb-wasm && bun run serve -- --path ../..
+# API server (recommended for development)
+bun run serve -- --path ../..
+
+# Static file server (for static hosting scenarios)
+bun run serve-static -- --path ../..
 ```
 
 ### CLI Options
 
-```
-Usage: bun serve.js [options]
+Both servers accept the same options:
 
+```
 Options:
   -p, --path <path>   Base path containing parquet files (default: current directory)
   --port <port>       Server port (default: 3000)
@@ -51,8 +76,6 @@ slack-utils export-users --format parquet
 slack-utils export-channels --format parquet
 slack-utils export-conversations --format parquet
 ```
-
-Then open http://localhost:3000 in your browser.
 
 ### Run queries
 
@@ -96,8 +119,26 @@ The tool includes predefined queries for:
 - Search messages by keyword
 - Recent messages
 
+## File Structure
+
+The static file mode expects the following Hive partition structure:
+
+```
+/users.parquet
+/channels.parquet
+/conversations/
+  year=2024/
+    week=01/
+      conversations.parquet
+    week=02/
+      conversations.parquet
+  year=2025/
+    week=01/
+      conversations.parquet
+```
+
 ## Requirements
 
 - Modern browser with WebAssembly support
-- Bun (for the server)
+- Bun (for the development servers)
 - Parquet files exported from slack-utils

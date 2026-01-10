@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slack Utils - DuckDB Query Tool (Static)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Slack Utils - DuckDB Query Tool</h1>
+            <p class="subtitle">Run SQL queries on Slack parquet exports (static file mode)</p>
+        </header>
+
+        <section class="data-loader">
+            <h2>Data</h2>
+            <div class="data-status" id="data-status">
+                <div class="status-item">
+                    <span class="status-label">Users:</span>
+                    <span class="status-value" id="users-status">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Channels:</span>
+                    <span class="status-value" id="channels-status">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Conversations:</span>
+                    <span class="status-value" id="conversations-status">Not loaded</span>
+                </div>
+            </div>
+            <div class="date-range">
+                <div class="date-input">
+                    <label for="start-date">From:</label>
+                    <input type="date" id="start-date">
+                </div>
+                <div class="date-input">
+                    <label for="end-date">To:</label>
+                    <input type="date" id="end-date">
+                </div>
+                <button id="load-conversations" class="primary">Load Conversations</button>
+            </div>
+            <div id="load-error" class="error hidden"></div>
+        </section>
+
+        <section class="query-section">
+            <h2>SQL Query</h2>
+            <div class="sample-queries">
+                <label for="sample-select">Sample Queries:</label>
+                <select id="sample-select">
+                    <option value="">-- Select a sample query --</option>
+                    <optgroup label="Overview Stats">
+                        <option value="total-users">Total Users (bots, admins)</option>
+                        <option value="total-channels">Total Channels (archived, private)</option>
+                        <option value="total-messages">Total Messages Overview</option>
+                    </optgroup>
+                    <optgroup label="Channel Stats">
+                        <option value="channels-by-members">Top Channels by Members</option>
+                        <option value="channels-by-messages">Top Channels by Message Count</option>
+                    </optgroup>
+                    <optgroup label="User Activity">
+                        <option value="active-users">Top Active Users</option>
+                        <option value="users-not-bots">List Human Users</option>
+                    </optgroup>
+                    <optgroup label="Time-based Stats">
+                        <option value="messages-by-week">Messages by Week</option>
+                        <option value="messages-by-date">Messages by Date</option>
+                    </optgroup>
+                    <optgroup label="Thread Activity">
+                        <option value="top-threads">Top Threads by Replies</option>
+                        <option value="thread-stats">Thread Statistics</option>
+                    </optgroup>
+                    <optgroup label="Content Search">
+                        <option value="search-text">Search Messages (edit KEYWORD)</option>
+                        <option value="recent-messages">Recent Messages</option>
+                    </optgroup>
+                </select>
+            </div>
+            <textarea id="query-input" placeholder="SELECT * FROM conversations LIMIT 10"></textarea>
+            <div class="query-actions">
+                <button id="run-query" class="primary">Run Query</button>
+                <button id="clear-query">Clear</button>
+                <span class="hint">Ctrl+Enter to run</span>
+            </div>
+        </section>
+
+        <section class="results-section">
+            <h2>Results <span id="result-count"></span></h2>
+            <div id="loading" class="loading hidden">Running query...</div>
+            <div id="error" class="error hidden"></div>
+            <div id="results-container">
+                <table id="results-table">
+                    <thead id="results-head"></thead>
+                    <tbody id="results-body"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script type="module" src="static-app.js"></script>
+</body>
+</html>
