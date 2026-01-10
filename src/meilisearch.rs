@@ -332,3 +332,227 @@ pub async fn query_meilisearch(
         estimated_total_hits: results.estimated_total_hits,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::index::{IndexChannel, IndexEntry, IndexUser};
+
+    #[test]
+    fn test_batch_size_constant() {
+        assert_eq!(BATCH_SIZE, 100);
+    }
+
+    #[test]
+    fn test_temp_index_prefix_constant() {
+        assert_eq!(TEMP_INDEX_PREFIX, "slack_utils_temp_");
+    }
+
+    #[test]
+    fn test_meilisearch_entry_from_index_entry() {
+        let index_entry = IndexEntry {
+            id: "1234567890_123456".to_string(),
+            ts: "1234567890.123456".to_string(),
+            date: "2009-02-13T23:31:30+00:00".to_string(),
+            text: "Test message".to_string(),
+            users: vec![IndexUser {
+                id: "U123".to_string(),
+                name: "testuser".to_string(),
+            }],
+            channel: IndexChannel {
+                id: "C456".to_string(),
+                name: "general".to_string(),
+            },
+        };
+
+        let ms_entry = MeilisearchEntry::from(index_entry.clone());
+
+        assert_eq!(ms_entry.id, index_entry.id);
+        assert_eq!(ms_entry.ts, index_entry.ts);
+        assert_eq!(ms_entry.date, index_entry.date);
+        assert_eq!(ms_entry.text, index_entry.text);
+        assert_eq!(ms_entry.users.len(), 1);
+        assert_eq!(ms_entry.users[0].id, "U123");
+        assert_eq!(ms_entry.users[0].name, "testuser");
+        assert_eq!(ms_entry.channel.id, "C456");
+        assert_eq!(ms_entry.channel.name, "general");
+    }
+
+    #[test]
+    fn test_meilisearch_entry_serialization() {
+        let entry = MeilisearchEntry {
+            id: "1234567890_123456".to_string(),
+            ts: "1234567890.123456".to_string(),
+            date: "2009-02-13T23:31:30+00:00".to_string(),
+            text: "Test message".to_string(),
+            users: vec![IndexUser {
+                id: "U123".to_string(),
+                name: "testuser".to_string(),
+            }],
+            channel: IndexChannel {
+                id: "C456".to_string(),
+                name: "general".to_string(),
+            },
+        };
+
+        let json = serde_json::to_string(&entry).unwrap();
+
+        assert!(json.contains("\"id\":\"1234567890_123456\""));
+        assert!(json.contains("\"ts\":\"1234567890.123456\""));
+        assert!(json.contains("\"date\":\"2009-02-13T23:31:30+00:00\""));
+        assert!(json.contains("\"text\":\"Test message\""));
+        assert!(json.contains("\"name\":\"testuser\""));
+        assert!(json.contains("\"name\":\"general\""));
+    }
+
+    #[test]
+    fn test_meilisearch_entry_id_has_no_dots() {
+        let index_entry = IndexEntry {
+            id: "1234567890_123456".to_string(), // Already sanitized
+            ts: "1234567890.123456".to_string(),
+            date: "2009-02-13T23:31:30+00:00".to_string(),
+            text: "Test".to_string(),
+            users: vec![],
+            channel: IndexChannel {
+                id: "C456".to_string(),
+                name: "general".to_string(),
+            },
+        };
+
+        let ms_entry = MeilisearchEntry::from(index_entry);
+
+        // ID should not contain dots (Meilisearch requirement)
+        assert!(!ms_entry.id.contains('.'));
+    }
+
+    #[test]
+    fn test_meilisearch_entry_preserves_original_ts() {
+        let index_entry = IndexEntry {
+            id: "1234567890_123456".to_string(),
+            ts: "1234567890.123456".to_string(), // Original with dot
+            date: "2009-02-13T23:31:30+00:00".to_string(),
+            text: "Test".to_string(),
+            users: vec![],
+            channel: IndexChannel {
+                id: "C456".to_string(),
+                name: "general".to_string(),
+            },
+        };
+
+        let ms_entry = MeilisearchEntry::from(index_entry);
+
+        // ts should preserve the original format with dot
+        assert!(ms_entry.ts.contains('.'));
+        assert_eq!(ms_entry.ts, "1234567890.123456");
+    }
+
+    #[test]
+    fn test_meilisearch_entry_with_multiple_users() {
+        let index_entry = IndexEntry {
+            id: "123_456".to_string(),
+            ts: "123.456".to_string(),
+            date: "2009-02-13T23:31:30+00:00".to_string(),
+            text: "Thread message".to_string(),
+            users: vec![
+                IndexUser {
+                    id: "U001".to_string(),
+                    name: "alice".to_string(),
+                },
+                IndexUser {
+                    id: "U002".to_string(),
+                    name: "bob".to_string(),
+                },
+                IndexUser {
+                    id: "U003".to_string(),
+                    name: "charlie".to_string(),
+                },
+            ],
+            channel: IndexChannel {
+                id: "C789".to_string(),
+                name: "random".to_string(),
+            },
+        };
+
+        let ms_entry = MeilisearchEntry::from(index_entry);
+
+        assert_eq!(ms_entry.users.len(), 3);
+        assert_eq!(ms_entry.users[0].name, "alice");
+        assert_eq!(ms_entry.users[1].name, "bob");
+        assert_eq!(ms_entry.users[2].name, "charlie");
+    }
+
+    #[test]
+    fn test_meilisearch_entry_with_empty_users() {
+        let index_entry = IndexEntry {
+            id: "123_456".to_string(),
+            ts: "123.456".to_string(),
+            date: "2009-02-13T23:31:30+00:00".to_string(),
+            text: "System message".to_string(),
+            users: vec![],
+            channel: IndexChannel {
+                id: "C789".to_string(),
+                name: "announcements".to_string(),
+            },
+        };
+
+        let ms_entry = MeilisearchEntry::from(index_entry);
+
+        assert!(ms_entry.users.is_empty());
+    }
+
+    #[test]
+    fn test_meilisearch_import_result() {
+        let result = MeilisearchImportResult {
+            total: 100,
+            index_name: "test-index".to_string(),
+        };
+
+        assert_eq!(result.total, 100);
+        assert_eq!(result.index_name, "test-index");
+    }
+
+    #[test]
+    fn test_meilisearch_search_result() {
+        let result = MeilisearchSearchResult {
+            hits: vec![IndexEntry {
+                id: "123_456".to_string(),
+                ts: "123.456".to_string(),
+                date: "2009-02-13T23:31:30+00:00".to_string(),
+                text: "Found message".to_string(),
+                users: vec![],
+                channel: IndexChannel {
+                    id: "C789".to_string(),
+                    name: "general".to_string(),
+                },
+            }],
+            processing_time_ms: 5,
+            estimated_total_hits: Some(42),
+        };
+
+        assert_eq!(result.hits.len(), 1);
+        assert_eq!(result.processing_time_ms, 5);
+        assert_eq!(result.estimated_total_hits, Some(42));
+    }
+
+    #[test]
+    fn test_meilisearch_search_result_no_estimated_hits() {
+        let result = MeilisearchSearchResult {
+            hits: vec![],
+            processing_time_ms: 1,
+            estimated_total_hits: None,
+        };
+
+        assert!(result.hits.is_empty());
+        assert_eq!(result.processing_time_ms, 1);
+        assert_eq!(result.estimated_total_hits, None);
+    }
+
+    #[test]
+    fn test_temp_index_name_format() {
+        let uuid = Uuid::new_v4();
+        let temp_name = format!("{}{}", TEMP_INDEX_PREFIX, uuid);
+
+        assert!(temp_name.starts_with("slack_utils_temp_"));
+        assert!(temp_name.len() > TEMP_INDEX_PREFIX.len());
+    }
+}
