@@ -13,6 +13,7 @@ use crate::ui::types::{
     MarkdownExportField, MenuItem, QueryMeilisearchField, Screen,
 };
 use crate::widgets::TextInput;
+use crate::OutputFormat;
 
 pub fn handle_input(app: &mut App, key: KeyEvent) {
     match &mut app.screen {
@@ -209,6 +210,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                         to_date: to_date_str.clone(),
                         output_path: output_path_str,
                         selected_channels,
+                        format: OutputFormat::Json, // Default to JSON for TUI
                     };
                     app.screen = Screen::Loading {
                         progress: None,
@@ -240,6 +242,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             KeyCode::Enter => {
                 let task = ExportTask::Users {
                     output_path: output_path.clone(),
+                    format: OutputFormat::Json, // Default to JSON for TUI
                 };
                 app.screen = Screen::Loading {
                     message: "Exporting users...".to_string(),
@@ -258,6 +261,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             KeyCode::Enter => {
                 let task = ExportTask::Channels {
                     output_path: output_path.clone(),
+                    format: OutputFormat::Json, // Default to JSON for TUI
                 };
                 app.screen = Screen::Loading {
                     message: "Exporting channels...".to_string(),

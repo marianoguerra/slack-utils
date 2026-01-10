@@ -4,10 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+arrow = "57"
 chrono = "0.4.42"
 clap = { version = "4.5.54", features = ["derive"] }
 crossterm = "0.29"
 meilisearch-sdk = "0.32.0"
+parquet = "57.1.0"
 ratatui = "0.30.0"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -20,3 +22,6 @@ toml = "0.9.10"
 uuid = { version = "1.17", features = ["v4"] }
 walkdir = "2.5.0"
 webpage = "2.0.1"
+
+[dev-dependencies]
+tempfile = "3.24.0"

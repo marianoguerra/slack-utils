@@ -7,11 +7,15 @@ async fn main() {
 
     let result = match cli.command {
         Commands::Ui => slack_utils::run_ui(),
-        Commands::ExportConversations { from, to, output } => {
-            slack_utils::run_export_conversations_async(from, to, &output).await
+        Commands::ExportConversations { from, to, output, format } => {
+            slack_utils::run_export_conversations_async(from, to, &output, &format).await
         }
-        Commands::ExportUsers { output } => slack_utils::run_export_users_async(&output).await,
-        Commands::ExportChannels { output } => slack_utils::run_export_channels_async(&output).await,
+        Commands::ExportUsers { output, format } => {
+            slack_utils::run_export_users_async(&output, &format).await
+        }
+        Commands::ExportChannels { output, format } => {
+            slack_utils::run_export_channels_async(&output, &format).await
+        }
         Commands::DownloadAttachments { input, output } => {
             slack_utils::run_download_attachments(&input, &output)
         }

@@ -23,23 +23,35 @@ pub enum Commands {
         #[arg(short, long)]
         to: Option<String>,
 
-        /// Output file path
-        #[arg(short, long, default_value = "conversations.json")]
+        /// Output path (without extension for json, directory path for parquet)
+        #[arg(short, long, default_value = "conversations")]
         output: String,
+
+        /// Output format (json or parquet)
+        #[arg(long, default_value = "json")]
+        format: String,
     },
 
     /// Export users
     ExportUsers {
-        /// Output file path
-        #[arg(short, long, default_value = "users.json")]
+        /// Output path (without extension)
+        #[arg(short, long, default_value = "users")]
         output: String,
+
+        /// Output format (json or parquet)
+        #[arg(long, default_value = "json")]
+        format: String,
     },
 
     /// Export channels
     ExportChannels {
-        /// Output file path
-        #[arg(short, long, default_value = "channels.json")]
+        /// Output path (without extension)
+        #[arg(short, long, default_value = "channels")]
         output: String,
+
+        /// Output format (json or parquet)
+        #[arg(long, default_value = "json")]
+        format: String,
     },
 
     /// Download attachments from a conversations file

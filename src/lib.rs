@@ -17,14 +17,45 @@ mod index;
 mod input;
 mod markdown;
 mod meilisearch;
+mod parquet;
 mod settings;
 mod slack;
 mod ui;
 mod widgets;
 
+/// Output format for export commands
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OutputFormat {
+    #[default]
+    Json,
+    Parquet,
+}
+
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutputFormat::Json => write!(f, "json"),
+            OutputFormat::Parquet => write!(f, "parquet"),
+        }
+    }
+}
+
+impl std::str::FromStr for OutputFormat {
+    type Err = AppError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "json" => Ok(OutputFormat::Json),
+            "parquet" => Ok(OutputFormat::Parquet),
+            _ => Err(AppError::InvalidFormat(s.to_string())),
+        }
+    }
+}
+
 // Re-export public API
 pub use cli::{Cli, Commands};
 pub use error::{AppError, Result};
+pub use parquet::{write_channels_parquet, write_conversations_parquet, write_users_parquet};
 
 /// Type alias for progress callback functions
 pub type ProgressCallback<'a> = Option<&'a dyn Fn(usize, usize, &str)>;

@@ -91,18 +91,18 @@ impl App {
         thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             match task {
-                ExportTask::Users { output_path } => {
+                ExportTask::Users { output_path, format } => {
                     let result = rt.block_on(async {
-                        let count = slack::export_users(&token, Path::new(&output_path)).await?;
+                        let count = slack::export_users(&token, Path::new(&output_path), format).await?;
                         Ok::<_, AppError>(format!("Exported {} users to {}", count, output_path))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
                         result.map_err(|e| e.to_string()),
                     ));
                 }
-                ExportTask::Channels { output_path } => {
+                ExportTask::Channels { output_path, format } => {
                     let result = rt.block_on(async {
-                        let count = slack::export_channels(&token, Path::new(&output_path)).await?;
+                        let count = slack::export_channels(&token, Path::new(&output_path), format).await?;
                         Ok::<_, AppError>(format!("Exported {} channels to {}", count, output_path))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
@@ -114,6 +114,7 @@ impl App {
                     to_date,
                     output_path,
                     selected_channels,
+                    format,
                 } => {
                     let progress_callback = |current: usize, total: usize, name: &str| {
                         let _ = progress_tx.send((current, total, name.to_string()));
@@ -128,6 +129,7 @@ impl App {
                             Path::new(&output_path),
                             Some(&selected_channels),
                             Some(progress_callback),
+                            format,
                         )
                         .await?;
                         Ok::<_, AppError>(format!("Exported {} messages to {}", count, output_path))

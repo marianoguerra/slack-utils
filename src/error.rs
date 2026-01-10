@@ -43,6 +43,12 @@ pub enum AppError {
 
     #[error("Meilisearch error: {0}")]
     Meilisearch(String),
+
+    #[error("invalid output format: {0}")]
+    InvalidFormat(String),
+
+    #[error("Parquet error: {0}")]
+    Parquet(String),
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;

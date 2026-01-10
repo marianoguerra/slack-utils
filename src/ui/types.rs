@@ -3,6 +3,7 @@ use ratatui::widgets::ListState;
 
 use crate::slack::ChannelInfo;
 use crate::widgets::TextInput;
+use crate::OutputFormat;
 
 // Field enums for different screens
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -634,12 +635,15 @@ pub enum ExportTask {
         to_date: String,
         output_path: String,
         selected_channels: HashSet<String>,
+        format: OutputFormat,
     },
     Users {
         output_path: String,
+        format: OutputFormat,
     },
     Channels {
         output_path: String,
+        format: OutputFormat,
     },
     DownloadAttachments {
         conversations_path: String,

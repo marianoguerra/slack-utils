@@ -5,14 +5,24 @@ use crate::index::export_conversations_to_index;
 use crate::markdown::export_conversations_to_markdown;
 use crate::meilisearch::{import_index_to_meilisearch, query_meilisearch};
 use crate::slack;
-use crate::{default_from_date, default_to_date, load_token, parse_date};
+use crate::{default_from_date, default_to_date, load_token, parse_date, OutputFormat};
+
+/// Derive output path based on format
+fn derive_output_path(base: &str, format: OutputFormat) -> String {
+    match format {
+        OutputFormat::Json => format!("{}.json", base),
+        OutputFormat::Parquet => format!("{}.parquet", base),
+    }
+}
 
 pub async fn run_export_conversations(
     from: Option<String>,
     to: Option<String>,
     output: &str,
+    format_str: &str,
 ) -> Result<()> {
     let token = load_token()?;
+    let format: OutputFormat = format_str.parse()?;
 
     let from_date = match from {
         Some(s) => parse_date(&s)?,
@@ -23,9 +33,15 @@ pub async fn run_export_conversations(
         None => default_to_date(),
     };
 
+    // For parquet, output is a directory; for json, output is a file
+    let output_path = match format {
+        OutputFormat::Json => derive_output_path(output, format),
+        OutputFormat::Parquet => output.to_string(), // Keep as directory path
+    };
+
     println!(
-        "Exporting conversations from {} to {} to {}...",
-        from_date, to_date, output
+        "Exporting conversations from {} to {} to {} (format: {})...",
+        from_date, to_date, output_path, format
     );
 
     let progress_callback = |current: usize, total: usize, name: &str| {
@@ -40,9 +56,10 @@ pub async fn run_export_conversations(
         &token,
         from_date,
         to_date,
-        Path::new(output),
+        Path::new(&output_path),
         None,
         Some(progress_callback),
+        format,
     )
     .await?;
 
@@ -53,23 +70,27 @@ pub async fn run_export_conversations(
     Ok(())
 }
 
-pub async fn run_export_users(output: &str) -> Result<()> {
+pub async fn run_export_users(output: &str, format_str: &str) -> Result<()> {
     let token = load_token()?;
+    let format: OutputFormat = format_str.parse()?;
+    let output_path = derive_output_path(output, format);
 
-    println!("Exporting users to {}...", output);
+    println!("Exporting users to {} (format: {})...", output_path, format);
 
-    let count = slack::export_users(&token, Path::new(output)).await?;
+    let count = slack::export_users(&token, Path::new(&output_path), format).await?;
 
     println!("Export completed successfully! {} users exported.", count);
     Ok(())
 }
 
-pub async fn run_export_channels(output: &str) -> Result<()> {
+pub async fn run_export_channels(output: &str, format_str: &str) -> Result<()> {
     let token = load_token()?;
+    let format: OutputFormat = format_str.parse()?;
+    let output_path = derive_output_path(output, format);
 
-    println!("Exporting channels to {}...", output);
+    println!("Exporting channels to {} (format: {})...", output_path, format);
 
-    let count = slack::export_channels(&token, Path::new(output)).await?;
+    let count = slack::export_channels(&token, Path::new(&output_path), format).await?;
 
     println!(
         "Export completed successfully! {} channels exported.",

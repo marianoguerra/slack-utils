@@ -7,7 +7,7 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use slack_morphism::prelude::*;
 
-use crate::{AppError, ProgressCallback, Result};
+use crate::{parquet, AppError, OutputFormat, ProgressCallback, Result};
 
 /// Type alias for loaded conversation data: (channel_id, channel_name, messages)
 pub type LoadedConversations = (
@@ -90,7 +90,7 @@ pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
     Ok(all_channels)
 }
 
-pub async fn export_users(token: &str, output_path: &Path) -> Result<usize> {
+pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat) -> Result<usize> {
     let client = SlackClient::new(
         SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
     );
@@ -124,12 +124,25 @@ pub async fn export_users(token: &str, output_path: &Path) -> Result<usize> {
     }
 
     let count = all_users.len();
-    write_json(output_path, &all_users)?;
+
+    match format {
+        OutputFormat::Json => {
+            write_json(output_path, &all_users)?;
+        }
+        OutputFormat::Parquet => {
+            let users_json: Vec<serde_json::Value> = all_users
+                .iter()
+                .map(serde_json::to_value)
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+            parquet::write_users_parquet(output_path, &users_json)?;
+        }
+    }
 
     Ok(count)
 }
 
-pub async fn export_channels(token: &str, output_path: &Path) -> Result<usize> {
+pub async fn export_channels(token: &str, output_path: &Path, format: OutputFormat) -> Result<usize> {
     let client = SlackClient::new(
         SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
     );
@@ -164,7 +177,20 @@ pub async fn export_channels(token: &str, output_path: &Path) -> Result<usize> {
     }
 
     let count = all_channels.len();
-    write_json(output_path, &all_channels)?;
+
+    match format {
+        OutputFormat::Json => {
+            write_json(output_path, &all_channels)?;
+        }
+        OutputFormat::Parquet => {
+            let channels_json: Vec<serde_json::Value> = all_channels
+                .iter()
+                .map(serde_json::to_value)
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+            parquet::write_channels_parquet(output_path, &channels_json)?;
+        }
+    }
 
     Ok(count)
 }
@@ -176,6 +202,7 @@ pub async fn export_conversations<F>(
     output_path: &Path,
     selected_channel_ids: Option<&HashSet<String>>,
     progress_callback: Option<F>,
+    format: OutputFormat,
 ) -> Result<usize>
 where
     F: Fn(usize, usize, &str),
@@ -363,7 +390,20 @@ where
     report_progress(total_channels, total_channels, "Writing output file...");
 
     let total_messages: usize = all_conversations.iter().map(|c| c.messages.len()).sum();
-    write_json(output_path, &all_conversations)?;
+
+    match format {
+        OutputFormat::Json => {
+            write_json(output_path, &all_conversations)?;
+        }
+        OutputFormat::Parquet => {
+            let conversations_json: Vec<serde_json::Value> = all_conversations
+                .iter()
+                .map(serde_json::to_value)
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+            parquet::write_conversations_parquet(output_path, &conversations_json)?;
+        }
+    }
 
     Ok(total_messages)
 }
