@@ -9,6 +9,7 @@ A set of utilities to interact with slack archives
 - **ratatui** - Terminal UI framework for building rich terminal interfaces
 - **thiserror** - Derive macro for implementing std::error::Error
 - **duckdb** - Optional dependency for SQL queries on parquet exports (feature-gated)
+- **bun** - Use bun for any JavaScript/TypeScript tasks
 
 ## slack-utils-duckdb Binary
 

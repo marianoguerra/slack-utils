@@ -1,0 +1,17 @@
+{
+  "name": "web-duckdb-wasm",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --hot serve.js",
+    "build": "bun build app.js --outdir=dist --minify",
+    "serve": "bun serve.js"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev16.0"
+  }
+}

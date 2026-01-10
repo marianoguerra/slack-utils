@@ -16,4 +16,8 @@
 # Parquet exports
 /channels.parquet
 /users.parquet
+/conversations.parquet
 /conversations/
+
+# Web tool dependencies
+/tools/web-duckdb-wasm/node_modules/

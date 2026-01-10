@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slack Utils - DuckDB Query Tool</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Slack Utils - DuckDB Query Tool</h1>
+            <p class="subtitle">Load parquet files and run SQL queries in your browser</p>
+        </header>
+
+        <section class="file-loader">
+            <h2>Load Parquet Files</h2>
+            <div class="file-inputs">
+                <div class="file-group">
+                    <label for="conversations-files">Conversations (select multiple week files):</label>
+                    <input type="file" id="conversations-files" accept=".parquet" multiple>
+                    <span class="file-hint">conversations/year=*/week=*/*.parquet</span>
+                </div>
+                <div class="file-group">
+                    <label for="users-file">Users:</label>
+                    <input type="file" id="users-file" accept=".parquet">
+                    <span class="file-hint">users.parquet</span>
+                </div>
+                <div class="file-group">
+                    <label for="channels-file">Channels:</label>
+                    <input type="file" id="channels-file" accept=".parquet">
+                    <span class="file-hint">channels.parquet</span>
+                </div>
+            </div>
+            <div class="loaded-status" id="loaded-status"></div>
+        </section>
+
+        <section class="query-section">
+            <h2>SQL Query</h2>
+            <div class="sample-queries">
+                <label for="sample-select">Sample Queries:</label>
+                <select id="sample-select">
+                    <option value="">-- Select a sample query --</option>
+                    <optgroup label="Overview Stats">
+                        <option value="total-users">Total Users (bots, admins)</option>
+                        <option value="total-channels">Total Channels (archived, private)</option>
+                        <option value="total-messages">Total Messages Overview</option>
+                    </optgroup>
+                    <optgroup label="Channel Stats">
+                        <option value="channels-by-members">Top Channels by Members</option>
+                        <option value="channels-by-messages">Top Channels by Message Count</option>
+                    </optgroup>
+                    <optgroup label="User Activity">
+                        <option value="active-users">Top Active Users</option>
+                        <option value="users-not-bots">List Human Users</option>
+                    </optgroup>
+                    <optgroup label="Time-based Stats">
+                        <option value="messages-by-week">Messages by Week</option>
+                        <option value="messages-by-date">Messages by Date</option>
+                    </optgroup>
+                    <optgroup label="Thread Activity">
+                        <option value="top-threads">Top Threads by Replies</option>
+                        <option value="thread-stats">Thread Statistics</option>
+                    </optgroup>
+                    <optgroup label="Content Search">
+                        <option value="search-text">Search Messages (edit KEYWORD)</option>
+                        <option value="recent-messages">Recent Messages</option>
+                    </optgroup>
+                </select>
+            </div>
+            <textarea id="query-input" placeholder="SELECT * FROM conversations LIMIT 10"></textarea>
+            <div class="query-actions">
+                <button id="run-query" class="primary">Run Query</button>
+                <button id="clear-query">Clear</button>
+            </div>
+        </section>
+
+        <section class="results-section">
+            <h2>Results <span id="result-count"></span></h2>
+            <div id="loading" class="loading hidden">Running query...</div>
+            <div id="error" class="error hidden"></div>
+            <div id="results-container">
+                <table id="results-table">
+                    <thead id="results-head"></thead>
+                    <tbody id="results-body"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
