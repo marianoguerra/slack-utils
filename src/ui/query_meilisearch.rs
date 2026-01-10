@@ -9,18 +9,18 @@ use ratatui::{
 use super::types::QueryMeilisearchField;
 use crate::index::IndexEntry;
 
-pub fn render(
-    f: &mut Frame,
-    query: &str,
-    url: &str,
-    api_key: &str,
-    index_name: &str,
-    active_field: QueryMeilisearchField,
-    results: Option<&Vec<IndexEntry>>,
-    result_state: &mut ListState,
-    error: Option<&str>,
-    area: Rect,
-) {
+pub struct QueryMeilisearchProps<'a> {
+    pub query: &'a str,
+    pub url: &'a str,
+    pub api_key: &'a str,
+    pub index_name: &'a str,
+    pub active_field: QueryMeilisearchField,
+    pub results: Option<&'a Vec<IndexEntry>>,
+    pub result_state: &'a mut ListState,
+    pub error: Option<&'a str>,
+}
+
+pub fn render(f: &mut Frame, props: QueryMeilisearchProps, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title("Search Meilisearch");
@@ -42,12 +42,12 @@ pub fn render(
         .split(inner);
 
     // Query field
-    let query_style = if active_field == QueryMeilisearchField::Query {
+    let query_style = if props.active_field == QueryMeilisearchField::Query {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let query_widget = Paragraph::new(query)
+    let query_widget = Paragraph::new(props.query)
         .style(query_style)
         .block(
             Block::default()
@@ -57,12 +57,12 @@ pub fn render(
     f.render_widget(query_widget, chunks[0]);
 
     // URL field
-    let url_style = if active_field == QueryMeilisearchField::Url {
+    let url_style = if props.active_field == QueryMeilisearchField::Url {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let url_widget = Paragraph::new(url)
+    let url_widget = Paragraph::new(props.url)
         .style(url_style)
         .block(
             Block::default()
@@ -72,15 +72,15 @@ pub fn render(
     f.render_widget(url_widget, chunks[1]);
 
     // API Key field (masked)
-    let api_key_style = if active_field == QueryMeilisearchField::ApiKey {
+    let api_key_style = if props.active_field == QueryMeilisearchField::ApiKey {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let masked_key = if api_key.is_empty() {
+    let masked_key = if props.api_key.is_empty() {
         "(none)".to_string()
     } else {
-        "*".repeat(api_key.len().min(20))
+        "*".repeat(props.api_key.len().min(20))
     };
     let api_key_widget = Paragraph::new(masked_key)
         .style(api_key_style)
@@ -92,12 +92,12 @@ pub fn render(
     f.render_widget(api_key_widget, chunks[2]);
 
     // Index name field
-    let index_style = if active_field == QueryMeilisearchField::IndexName {
+    let index_style = if props.active_field == QueryMeilisearchField::IndexName {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let index_widget = Paragraph::new(index_name)
+    let index_widget = Paragraph::new(props.index_name)
         .style(index_style)
         .block(
             Block::default()
@@ -117,13 +117,13 @@ pub fn render(
         .borders(Borders::ALL)
         .title("Results");
 
-    if let Some(err) = error {
+    if let Some(err) = props.error {
         let error_widget = Paragraph::new(err)
             .style(Style::default().fg(Color::Red))
             .wrap(Wrap { trim: true })
             .block(results_block);
         f.render_widget(error_widget, chunks[5]);
-    } else if let Some(results) = results {
+    } else if let Some(results) = props.results {
         if results.is_empty() {
             let no_results = Paragraph::new("No results found.")
                 .style(Style::default().fg(Color::DarkGray))
@@ -190,7 +190,7 @@ pub fn render(
                         .add_modifier(Modifier::BOLD),
                 );
 
-            f.render_stateful_widget(list, chunks[5], result_state);
+            f.render_stateful_widget(list, chunks[5], props.result_state);
         }
     } else {
         let placeholder = Paragraph::new("Enter a search query and press Enter to search.")

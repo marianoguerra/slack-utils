@@ -7,16 +7,16 @@ use ratatui::{
 
 use super::types::ImportMeilisearchField;
 
-pub fn render(
-    f: &mut Frame,
-    input_path: &str,
-    url: &str,
-    api_key: &str,
-    index_name: &str,
-    clear: bool,
-    active_field: ImportMeilisearchField,
-    area: Rect,
-) {
+pub struct ImportMeilisearchProps<'a> {
+    pub input_path: &'a str,
+    pub url: &'a str,
+    pub api_key: &'a str,
+    pub index_name: &'a str,
+    pub clear: bool,
+    pub active_field: ImportMeilisearchField,
+}
+
+pub fn render(f: &mut Frame, props: ImportMeilisearchProps, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title("Import Index to Meilisearch");
@@ -38,12 +38,12 @@ pub fn render(
         .split(inner);
 
     // Input path field
-    let input_style = if active_field == ImportMeilisearchField::Input {
+    let input_style = if props.active_field == ImportMeilisearchField::Input {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let input_widget = Paragraph::new(input_path)
+    let input_widget = Paragraph::new(props.input_path)
         .style(input_style)
         .block(
             Block::default()
@@ -53,12 +53,12 @@ pub fn render(
     f.render_widget(input_widget, chunks[0]);
 
     // URL field
-    let url_style = if active_field == ImportMeilisearchField::Url {
+    let url_style = if props.active_field == ImportMeilisearchField::Url {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let url_widget = Paragraph::new(url)
+    let url_widget = Paragraph::new(props.url)
         .style(url_style)
         .block(
             Block::default()
@@ -68,15 +68,15 @@ pub fn render(
     f.render_widget(url_widget, chunks[1]);
 
     // API Key field (masked)
-    let api_key_style = if active_field == ImportMeilisearchField::ApiKey {
+    let api_key_style = if props.active_field == ImportMeilisearchField::ApiKey {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let masked_key = if api_key.is_empty() {
+    let masked_key = if props.api_key.is_empty() {
         "(none)".to_string()
     } else {
-        "*".repeat(api_key.len().min(20))
+        "*".repeat(props.api_key.len().min(20))
     };
     let api_key_widget = Paragraph::new(masked_key)
         .style(api_key_style)
@@ -88,12 +88,12 @@ pub fn render(
     f.render_widget(api_key_widget, chunks[2]);
 
     // Index name field
-    let index_style = if active_field == ImportMeilisearchField::IndexName {
+    let index_style = if props.active_field == ImportMeilisearchField::IndexName {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let index_widget = Paragraph::new(index_name)
+    let index_widget = Paragraph::new(props.index_name)
         .style(index_style)
         .block(
             Block::default()
@@ -103,12 +103,12 @@ pub fn render(
     f.render_widget(index_widget, chunks[3]);
 
     // Clear checkbox
-    let clear_style = if active_field == ImportMeilisearchField::Clear {
+    let clear_style = if props.active_field == ImportMeilisearchField::Clear {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let clear_text = if clear { "[x] Clear index" } else { "[ ] Clear index" };
+    let clear_text = if props.clear { "[x] Clear index" } else { "[ ] Clear index" };
     let clear_widget = Paragraph::new(clear_text)
         .style(clear_style)
         .block(
