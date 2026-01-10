@@ -11,7 +11,7 @@ crossterm = "0.29"
 meilisearch-sdk = "0.32.0"
 parquet = "57.1.0"
 ratatui = "0.30.0"
-reqwest = { version = "0.13", features = ["blocking", "json"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 slack-blocks-render = "0.4.2"
