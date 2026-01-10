@@ -90,6 +90,60 @@ Tables available:
 
 Press `Ctrl+Enter` (or `Cmd+Enter` on Mac) to run the query.
 
+## URL Query Parameters
+
+You can pre-fill the date range and auto-load conversations by passing query parameters in the URL. This is useful for bookmarking specific time ranges or sharing links.
+
+### Week-based Parameters
+
+Load data by ISO week number:
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `fromYear` | Yes | Start year (e.g., `2024`) |
+| `fromWeek` | Yes | Start ISO week number (1-53) |
+| `toYear` | No | End year (defaults to `fromYear`) |
+| `toWeek` | No | End ISO week number (defaults to `fromWeek`) |
+
+**Examples:**
+
+```
+# Load a single week (week 42 of 2024)
+?fromYear=2024&fromWeek=42
+
+# Load multiple weeks in the same year (weeks 40-45 of 2024)
+?fromYear=2024&fromWeek=40&toWeek=45
+
+# Load weeks across year boundary (week 50 of 2024 to week 2 of 2025)
+?fromYear=2024&fromWeek=50&toYear=2025&toWeek=2
+```
+
+### Date-based Parameters
+
+Load data by specific dates:
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `fromDate` | Yes | Start date in `YYYY-MM-DD` format |
+| `toDate` | Yes | End date in `YYYY-MM-DD` format |
+
+**Examples:**
+
+```
+# Load October 2024
+?fromDate=2024-10-01&toDate=2024-10-31
+
+# Load Q4 2024
+?fromDate=2024-10-01&toDate=2024-12-31
+```
+
+### Behavior
+
+When query parameters are present:
+1. The date inputs are pre-filled with the calculated date range
+2. After users and channels finish loading, conversations are automatically loaded
+3. If no query parameters are provided, the date range defaults to the last 2 months (no auto-load)
+
 ## Sample Queries
 
 The tool includes predefined queries for:

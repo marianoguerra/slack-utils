@@ -143,12 +143,52 @@ class DuckDBStaticApp {
     }
 
     setDefaultDates() {
+        const params = new URLSearchParams(window.location.search);
+
+        // Check for fromYear/fromWeek and toYear/toWeek params
+        const fromYear = params.get('fromYear');
+        const fromWeek = params.get('fromWeek');
+        const toYear = params.get('toYear') || fromYear;
+        const toWeek = params.get('toWeek') || fromWeek;
+
+        if (fromYear && fromWeek) {
+            const { startDate } = this.getDateRangeForWeek(parseInt(fromYear), parseInt(fromWeek));
+            const { endDate } = this.getDateRangeForWeek(parseInt(toYear), parseInt(toWeek));
+            document.getElementById('start-date').value = this.formatDate(startDate);
+            document.getElementById('end-date').value = this.formatDate(endDate);
+            this.autoLoadConversations = true;
+            return;
+        }
+
+        // Check for fromDate and toDate params
+        const fromDate = params.get('fromDate');
+        const toDate = params.get('toDate');
+
+        if (fromDate && toDate) {
+            document.getElementById('start-date').value = fromDate;
+            document.getElementById('end-date').value = toDate;
+            this.autoLoadConversations = true;
+            return;
+        }
+
+        // Default: last 2 months
         const endDate = new Date();
         const startDate = new Date();
         startDate.setMonth(startDate.getMonth() - 2);
 
         document.getElementById('start-date').value = this.formatDate(startDate);
         document.getElementById('end-date').value = this.formatDate(endDate);
+    }
+
+    getDateRangeForWeek(year, week) {
+        // Get the Monday of the ISO week
+        const monday = this.getDateOfISOWeek(week, year);
+
+        // Sunday is 6 days after Monday
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+
+        return { startDate: monday, endDate: sunday };
     }
 
     formatDate(date) {
@@ -204,6 +244,11 @@ class DuckDBStaticApp {
             this.loadStaticFile('users', '/users.parquet'),
             this.loadStaticFile('channels', '/channels.parquet')
         ]);
+
+        // Auto-load conversations if query params were provided
+        if (this.autoLoadConversations) {
+            await this.loadConversations();
+        }
     }
 
     async loadStaticFile(tableName, path) {
