@@ -40,6 +40,31 @@ pub enum ExportEmojisField {
     EmojisFolder,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ExportIndexField {
+    Conversations,
+    Users,
+    Channels,
+    Output,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ImportMeilisearchField {
+    Input,
+    Url,
+    ApiKey,
+    IndexName,
+    Clear,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum QueryMeilisearchField {
+    Query,
+    Url,
+    ApiKey,
+    IndexName,
+}
+
 // Menu item enum
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MenuItem {
@@ -49,6 +74,9 @@ pub enum MenuItem {
     EditConversations,
     DownloadAttachments,
     SelectedConversationsToMarkdown,
+    ExportIndex,
+    ImportIndexMeilisearch,
+    QueryMeilisearch,
     ExportEmojis,
     Exit,
 }
@@ -62,6 +90,9 @@ impl MenuItem {
             MenuItem::DownloadAttachments,
             MenuItem::EditConversations,
             MenuItem::SelectedConversationsToMarkdown,
+            MenuItem::ExportIndex,
+            MenuItem::ImportIndexMeilisearch,
+            MenuItem::QueryMeilisearch,
             MenuItem::ExportEmojis,
             MenuItem::Exit,
         ]
@@ -75,6 +106,9 @@ impl MenuItem {
             MenuItem::DownloadAttachments => "Download Attachments",
             MenuItem::EditConversations => "Edit Conversations",
             MenuItem::SelectedConversationsToMarkdown => "Export Conversations to Markdown",
+            MenuItem::ExportIndex => "Export Index",
+            MenuItem::ImportIndexMeilisearch => "Import Index to Meilisearch",
+            MenuItem::QueryMeilisearch => "Search Meilisearch",
             MenuItem::ExportEmojis => "Export Custom Emojis",
             MenuItem::Exit => "Exit",
         }
@@ -621,6 +655,19 @@ pub enum ExportTask {
         output_path: String,
         emojis_folder: String,
     },
+    ExportIndex {
+        conversations_path: String,
+        users_path: String,
+        channels_path: String,
+        output_path: String,
+    },
+    ImportMeilisearch {
+        input_path: String,
+        url: String,
+        api_key: String,
+        index_name: String,
+        clear: bool,
+    },
 }
 
 // Screen enum
@@ -685,6 +732,31 @@ pub enum Screen {
         emojis_folder: String,
         active_field: ExportEmojisField,
     },
+    ExportIndex {
+        conversations_path: String,
+        users_path: String,
+        channels_path: String,
+        output_path: String,
+        active_field: ExportIndexField,
+    },
+    ImportMeilisearch {
+        input_path: String,
+        url: String,
+        api_key: String,
+        index_name: String,
+        clear: bool,
+        active_field: ImportMeilisearchField,
+    },
+    QueryMeilisearch {
+        query: String,
+        url: String,
+        api_key: String,
+        index_name: String,
+        active_field: QueryMeilisearchField,
+        results: Option<Vec<crate::index::IndexEntry>>,
+        result_state: ListState,
+        error: Option<String>,
+    },
     Loading {
         message: String,
         progress: Option<(usize, usize, String)>,
@@ -701,4 +773,5 @@ pub enum Screen {
 pub enum AsyncResult {
     ExportComplete(std::result::Result<String, String>),
     ChannelsLoaded(std::result::Result<Vec<ChannelInfo>, String>),
+    QueryResult(std::result::Result<Vec<crate::index::IndexEntry>, String>),
 }

@@ -6,9 +6,11 @@ use ratatui::widgets::ListState;
 
 use crate::app::App;
 use crate::slack;
+use crate::settings::Settings;
 use crate::ui::types::{
     AsyncResult, ConvExportField, DownloadAttachmentsField, EditConvPathField,
-    EditableChannelList, ExportEmojisField, ExportTask, MarkdownExportField, MenuItem, Screen,
+    EditableChannelList, ExportEmojisField, ExportIndexField, ExportTask, ImportMeilisearchField,
+    MarkdownExportField, MenuItem, QueryMeilisearchField, Screen,
 };
 use crate::widgets::TextInput;
 
@@ -63,6 +65,43 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                             output_path: "emojis.json".to_string(),
                             emojis_folder: "emojis".to_string(),
                             active_field: ExportEmojisField::OutputPath,
+                        };
+                    }
+                    MenuItem::ExportIndex => {
+                        app.screen = Screen::ExportIndex {
+                            conversations_path: "./conversations.json".to_string(),
+                            users_path: "./users.json".to_string(),
+                            channels_path: "./channels.json".to_string(),
+                            output_path: "./conversation-index.json".to_string(),
+                            active_field: ExportIndexField::Conversations,
+                        };
+                    }
+                    MenuItem::ImportIndexMeilisearch => {
+                        // Load saved settings if available
+                        let saved = Settings::load().ok();
+                        let ms = saved.as_ref().map(|s| &s.meilisearch);
+                        app.screen = Screen::ImportMeilisearch {
+                            input_path: "./conversation-index.json".to_string(),
+                            url: ms.map(|m| m.url.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "http://localhost:7700".to_string()),
+                            api_key: ms.map(|m| m.api_key.clone()).unwrap_or_default(),
+                            index_name: ms.map(|m| m.index_name.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "conversations".to_string()),
+                            clear: false,
+                            active_field: ImportMeilisearchField::Input,
+                        };
+                    }
+                    MenuItem::QueryMeilisearch => {
+                        // Load saved settings if available
+                        let saved = Settings::load().ok();
+                        let ms = saved.as_ref().map(|s| &s.meilisearch);
+                        app.screen = Screen::QueryMeilisearch {
+                            query: String::new(),
+                            url: ms.map(|m| m.url.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "http://localhost:7700".to_string()),
+                            api_key: ms.map(|m| m.api_key.clone()).unwrap_or_default(),
+                            index_name: ms.map(|m| m.index_name.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "conversations".to_string()),
+                            active_field: QueryMeilisearchField::Query,
+                            results: None,
+                            result_state: ListState::default(),
+                            error: None,
                         };
                     }
                     MenuItem::Exit => app.should_quit = true,
@@ -380,6 +419,243 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     progress: None,
                 };
                 app.start_task(task);
+            }
+            _ => {}
+        },
+        Screen::ExportIndex {
+            conversations_path,
+            users_path,
+            channels_path,
+            output_path,
+            active_field,
+        } => match key.code {
+            KeyCode::Esc => app.screen = Screen::MainMenu,
+            KeyCode::Tab => {
+                *active_field = match active_field {
+                    ExportIndexField::Conversations => ExportIndexField::Users,
+                    ExportIndexField::Users => ExportIndexField::Channels,
+                    ExportIndexField::Channels => ExportIndexField::Output,
+                    ExportIndexField::Output => ExportIndexField::Conversations,
+                };
+            }
+            KeyCode::BackTab => {
+                *active_field = match active_field {
+                    ExportIndexField::Conversations => ExportIndexField::Output,
+                    ExportIndexField::Users => ExportIndexField::Conversations,
+                    ExportIndexField::Channels => ExportIndexField::Users,
+                    ExportIndexField::Output => ExportIndexField::Channels,
+                };
+            }
+            KeyCode::Char(c) => {
+                let field = match active_field {
+                    ExportIndexField::Conversations => conversations_path,
+                    ExportIndexField::Users => users_path,
+                    ExportIndexField::Channels => channels_path,
+                    ExportIndexField::Output => output_path,
+                };
+                field.push(c);
+            }
+            KeyCode::Backspace => {
+                let field = match active_field {
+                    ExportIndexField::Conversations => conversations_path,
+                    ExportIndexField::Users => users_path,
+                    ExportIndexField::Channels => channels_path,
+                    ExportIndexField::Output => output_path,
+                };
+                field.pop();
+            }
+            KeyCode::Enter => {
+                let task = ExportTask::ExportIndex {
+                    conversations_path: conversations_path.clone(),
+                    users_path: users_path.clone(),
+                    channels_path: channels_path.clone(),
+                    output_path: output_path.clone(),
+                };
+                app.screen = Screen::Loading {
+                    message: "Exporting to index...".to_string(),
+                    progress: None,
+                };
+                app.start_task(task);
+            }
+            _ => {}
+        },
+        Screen::ImportMeilisearch {
+            input_path,
+            url,
+            api_key,
+            index_name,
+            clear,
+            active_field,
+        } => match key.code {
+            KeyCode::Esc => app.screen = Screen::MainMenu,
+            KeyCode::Tab => {
+                *active_field = match active_field {
+                    ImportMeilisearchField::Input => ImportMeilisearchField::Url,
+                    ImportMeilisearchField::Url => ImportMeilisearchField::ApiKey,
+                    ImportMeilisearchField::ApiKey => ImportMeilisearchField::IndexName,
+                    ImportMeilisearchField::IndexName => ImportMeilisearchField::Clear,
+                    ImportMeilisearchField::Clear => ImportMeilisearchField::Input,
+                };
+            }
+            KeyCode::BackTab => {
+                *active_field = match active_field {
+                    ImportMeilisearchField::Input => ImportMeilisearchField::Clear,
+                    ImportMeilisearchField::Url => ImportMeilisearchField::Input,
+                    ImportMeilisearchField::ApiKey => ImportMeilisearchField::Url,
+                    ImportMeilisearchField::IndexName => ImportMeilisearchField::ApiKey,
+                    ImportMeilisearchField::Clear => ImportMeilisearchField::IndexName,
+                };
+            }
+            KeyCode::Char(' ') if *active_field == ImportMeilisearchField::Clear => {
+                *clear = !*clear;
+            }
+            KeyCode::Char(c) if *active_field != ImportMeilisearchField::Clear => {
+                let field = match active_field {
+                    ImportMeilisearchField::Input => input_path,
+                    ImportMeilisearchField::Url => url,
+                    ImportMeilisearchField::ApiKey => api_key,
+                    ImportMeilisearchField::IndexName => index_name,
+                    ImportMeilisearchField::Clear => return,
+                };
+                field.push(c);
+            }
+            KeyCode::Backspace if *active_field != ImportMeilisearchField::Clear => {
+                let field = match active_field {
+                    ImportMeilisearchField::Input => input_path,
+                    ImportMeilisearchField::Url => url,
+                    ImportMeilisearchField::ApiKey => api_key,
+                    ImportMeilisearchField::IndexName => index_name,
+                    ImportMeilisearchField::Clear => return,
+                };
+                field.pop();
+            }
+            KeyCode::Enter => {
+                let task = ExportTask::ImportMeilisearch {
+                    input_path: input_path.clone(),
+                    url: url.clone(),
+                    api_key: api_key.clone(),
+                    index_name: index_name.clone(),
+                    clear: *clear,
+                };
+                let msg = if *clear {
+                    "Importing to Meilisearch (clearing index)...".to_string()
+                } else {
+                    "Importing to Meilisearch...".to_string()
+                };
+                app.screen = Screen::Loading {
+                    message: msg,
+                    progress: None,
+                };
+                app.start_task(task);
+            }
+            _ => {}
+        },
+        Screen::QueryMeilisearch {
+            query,
+            url,
+            api_key,
+            index_name,
+            active_field,
+            results,
+            result_state,
+            error,
+        } => match key.code {
+            KeyCode::Esc => app.screen = Screen::MainMenu,
+            KeyCode::Tab => {
+                *active_field = match active_field {
+                    QueryMeilisearchField::Query => QueryMeilisearchField::Url,
+                    QueryMeilisearchField::Url => QueryMeilisearchField::ApiKey,
+                    QueryMeilisearchField::ApiKey => QueryMeilisearchField::IndexName,
+                    QueryMeilisearchField::IndexName => QueryMeilisearchField::Query,
+                };
+            }
+            KeyCode::BackTab => {
+                *active_field = match active_field {
+                    QueryMeilisearchField::Query => QueryMeilisearchField::IndexName,
+                    QueryMeilisearchField::Url => QueryMeilisearchField::Query,
+                    QueryMeilisearchField::ApiKey => QueryMeilisearchField::Url,
+                    QueryMeilisearchField::IndexName => QueryMeilisearchField::ApiKey,
+                };
+            }
+            KeyCode::Up | KeyCode::Char('k') if results.is_some() => {
+                if let Some(res) = results
+                    && !res.is_empty()
+                {
+                    let i = match result_state.selected() {
+                        Some(i) => {
+                            if i == 0 {
+                                res.len() - 1
+                            } else {
+                                i - 1
+                            }
+                        }
+                        None => 0,
+                    };
+                    result_state.select(Some(i));
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') if results.is_some() => {
+                if let Some(res) = results
+                    && !res.is_empty()
+                {
+                    let i = match result_state.selected() {
+                        Some(i) => {
+                            if i >= res.len() - 1 {
+                                0
+                            } else {
+                                i + 1
+                            }
+                        }
+                        None => 0,
+                    };
+                    result_state.select(Some(i));
+                }
+            }
+            KeyCode::Char(c) => {
+                let field = match active_field {
+                    QueryMeilisearchField::Query => query,
+                    QueryMeilisearchField::Url => url,
+                    QueryMeilisearchField::ApiKey => api_key,
+                    QueryMeilisearchField::IndexName => index_name,
+                };
+                field.push(c);
+            }
+            KeyCode::Backspace => {
+                let field = match active_field {
+                    QueryMeilisearchField::Query => query,
+                    QueryMeilisearchField::Url => url,
+                    QueryMeilisearchField::ApiKey => api_key,
+                    QueryMeilisearchField::IndexName => index_name,
+                };
+                field.pop();
+            }
+            KeyCode::Enter => {
+                // Start async query
+                *error = None;
+                let (tx, rx) = mpsc::channel();
+                app.async_result_rx = Some(rx);
+
+                let query_str = query.clone();
+                let url_str = url.clone();
+                let api_key_str = api_key.clone();
+                let index_name_str = index_name.clone();
+
+                thread::spawn(move || {
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    let result = rt.block_on(async {
+                        crate::meilisearch::query_meilisearch(
+                            &url_str,
+                            &api_key_str,
+                            &index_name_str,
+                            &query_str,
+                            20,
+                        )
+                        .await
+                    });
+                    let _ = tx.send(AsyncResult::QueryResult(
+                        result.map(|r| r.hits).map_err(|e| e.to_string()),
+                    ));
+                });
             }
             _ => {}
         },

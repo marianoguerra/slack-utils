@@ -40,6 +40,9 @@ pub enum AppError {
 
     #[error("TOML serialization error: {0}")]
     TomlSerialize(String),
+
+    #[error("Meilisearch error: {0}")]
+    Meilisearch(String),
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;

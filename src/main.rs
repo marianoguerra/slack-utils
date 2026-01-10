@@ -24,6 +24,29 @@ async fn main() {
         Commands::ExportEmojis { output, folder } => {
             slack_utils::run_export_emojis_async(&output, &folder).await
         }
+        Commands::ExportIndex {
+            conversations,
+            users,
+            channels,
+            output,
+        } => slack_utils::run_export_index(&conversations, &users, &channels, &output),
+        Commands::ImportIndexMeilisearch {
+            input,
+            url,
+            api_key,
+            index_name,
+            clear,
+        } => {
+            slack_utils::run_import_index_meilisearch_async(&input, &url, &api_key, &index_name, clear)
+                .await
+        }
+        Commands::QueryMeilisearch {
+            query,
+            url,
+            api_key,
+            index_name,
+            limit,
+        } => slack_utils::run_query_meilisearch_async(&url, &api_key, &index_name, &query, limit).await,
     };
 
     if let Err(e) = result {

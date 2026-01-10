@@ -13,8 +13,10 @@ mod app;
 mod cli;
 mod commands;
 mod error;
+mod index;
 mod input;
 mod markdown;
+mod meilisearch;
 mod settings;
 mod slack;
 mod ui;
@@ -31,9 +33,12 @@ pub type ProgressCallback<'a> = Option<&'a dyn Fn(usize, usize, &str)>;
 pub use commands::run_download_attachments;
 pub use commands::run_export_channels as run_export_channels_async;
 pub use commands::run_export_conversations as run_export_conversations_async;
+pub use commands::run_export_emojis as run_export_emojis_async;
+pub use commands::run_export_index;
 pub use commands::run_export_markdown;
 pub use commands::run_export_users as run_export_users_async;
-pub use commands::run_export_emojis as run_export_emojis_async;
+pub use commands::run_import_index_meilisearch as run_import_index_meilisearch_async;
+pub use commands::run_query_meilisearch as run_query_meilisearch_async;
 
 /// Constant for the channels file
 pub const CHANNELS_FILE: &str = "channels.json";

@@ -3,11 +3,14 @@ pub mod types;
 mod download_attachments;
 mod edit_conversations;
 mod export_conversations;
-mod export_simple;
 mod export_emojis;
+mod export_index;
+mod export_simple;
+mod import_meilisearch;
 mod loading;
 mod main_menu;
 mod markdown_export;
+mod query_meilisearch;
 
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -92,6 +95,59 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             emojis_folder,
             active_field,
         } => export_emojis::render(f, output_path, emojis_folder, *active_field, chunks[1]),
+        Screen::ExportIndex {
+            conversations_path,
+            users_path,
+            channels_path,
+            output_path,
+            active_field,
+        } => export_index::render(
+            f,
+            conversations_path,
+            users_path,
+            channels_path,
+            output_path,
+            *active_field,
+            chunks[1],
+        ),
+        Screen::ImportMeilisearch {
+            input_path,
+            url,
+            api_key,
+            index_name,
+            clear,
+            active_field,
+        } => import_meilisearch::render(
+            f,
+            input_path,
+            url,
+            api_key,
+            index_name,
+            *clear,
+            *active_field,
+            chunks[1],
+        ),
+        Screen::QueryMeilisearch {
+            query,
+            url,
+            api_key,
+            index_name,
+            active_field,
+            results,
+            result_state,
+            error,
+        } => query_meilisearch::render(
+            f,
+            query,
+            url,
+            api_key,
+            index_name,
+            *active_field,
+            results.as_ref(),
+            result_state,
+            error.as_deref(),
+            chunks[1],
+        ),
         Screen::EditConversationsPathInput {
             conversations_path,
             users_path,

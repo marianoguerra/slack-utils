@@ -12,12 +12,24 @@ const SETTINGS_FILE: &str = "settings.toml";
 pub struct Settings {
     #[serde(default)]
     pub ui: UiSettings,
+    #[serde(default)]
+    pub meilisearch: MeilisearchSettings,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct UiSettings {
     #[serde(default, rename = "selected-channels")]
     pub selected_channels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MeilisearchSettings {
+    #[serde(default)]
+    pub url: String,
+    #[serde(default, rename = "api-key")]
+    pub api_key: String,
+    #[serde(default, rename = "index-name")]
+    pub index_name: String,
 }
 
 impl Settings {

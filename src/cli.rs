@@ -82,4 +82,68 @@ pub enum Commands {
         #[arg(short, long, default_value = "emojis")]
         folder: String,
     },
+
+    /// Export conversations to a searchable index
+    ExportIndex {
+        /// Input conversations file path
+        #[arg(short, long, default_value = "conversations.json")]
+        conversations: String,
+
+        /// Users JSON file path
+        #[arg(short, long, default_value = "users.json")]
+        users: String,
+
+        /// Channels JSON file path
+        #[arg(long, default_value = "channels.json")]
+        channels: String,
+
+        /// Output index JSON file path
+        #[arg(short, long, default_value = "conversation-index.json")]
+        output: String,
+    },
+
+    /// Import index to Meilisearch
+    ImportIndexMeilisearch {
+        /// Input index JSON file path
+        #[arg(short, long, default_value = "conversation-index.json")]
+        input: String,
+
+        /// Meilisearch server URL
+        #[arg(short, long, default_value = "http://localhost:7700")]
+        url: String,
+
+        /// Meilisearch API key
+        #[arg(short, long, default_value = "")]
+        api_key: String,
+
+        /// Meilisearch index name
+        #[arg(short = 'n', long, default_value = "conversations")]
+        index_name: String,
+
+        /// Clear index before import (uses swap operation)
+        #[arg(short, long, default_value = "false")]
+        clear: bool,
+    },
+
+    /// Query Meilisearch index
+    QueryMeilisearch {
+        /// Search query
+        query: String,
+
+        /// Meilisearch server URL
+        #[arg(short, long, default_value = "http://localhost:7700")]
+        url: String,
+
+        /// Meilisearch API key
+        #[arg(short, long, default_value = "")]
+        api_key: String,
+
+        /// Meilisearch index name
+        #[arg(short = 'n', long, default_value = "conversations")]
+        index_name: String,
+
+        /// Maximum number of results
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
 }

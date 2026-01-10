@@ -50,3 +50,31 @@ export-emojis:
 # Export custom emojis with custom paths
 export-emojis-custom output folder:
     cargo run -- export-emojis --output {{output}} --folder {{folder}}
+
+# Export conversations to searchable index
+export-index:
+    cargo run -- export-index
+
+# Export conversations to searchable index with custom paths
+export-index-custom conversations users channels output:
+    cargo run -- export-index --conversations {{conversations}} --users {{users}} --channels {{channels}} --output {{output}}
+
+# Import index to Meilisearch
+import-meilisearch url api_key index_name:
+    cargo run -- import-index-meilisearch --url {{url}} --api-key {{api_key}} --index-name {{index_name}}
+
+# Import index to Meilisearch with custom input path
+import-meilisearch-custom input url api_key index_name:
+    cargo run -- import-index-meilisearch --input {{input}} --url {{url}} --api-key {{api_key}} --index-name {{index_name}}
+
+# Import index to Meilisearch and clear existing data
+import-meilisearch-clear url api_key index_name:
+    cargo run -- import-index-meilisearch --url {{url}} --api-key {{api_key}} --index-name {{index_name}} --clear
+
+# Query Meilisearch index
+query-meilisearch query url api_key index_name:
+    cargo run -- query-meilisearch "{{query}}" --url {{url}} --api-key {{api_key}} --index-name {{index_name}}
+
+# Start Meilisearch server
+start-meilisearch:
+  ./meilisearch --master-key $MS_MASTER_KEY

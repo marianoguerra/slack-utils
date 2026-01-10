@@ -5,7 +5,9 @@ use std::thread;
 use ratatui::widgets::ListState;
 
 use crate::error::AppError;
+use crate::index::export_conversations_to_index_with_progress;
 use crate::markdown::export_conversations_to_markdown_with_progress;
+use crate::meilisearch::import_index_to_meilisearch;
 use crate::settings::Settings;
 use crate::slack;
 use crate::ui::types::{
@@ -205,6 +207,61 @@ impl App {
                         result.map_err(|e| e.to_string()),
                     ));
                 }
+                ExportTask::ExportIndex {
+                    conversations_path,
+                    users_path,
+                    channels_path,
+                    output_path,
+                } => {
+                    let progress_callback = move |current: usize, total: usize, name: &str| {
+                        let _ = progress_tx.send((current, total, name.to_string()));
+                    };
+                    let result = export_conversations_to_index_with_progress(
+                        &conversations_path,
+                        &users_path,
+                        &channels_path,
+                        &output_path,
+                        Some(&progress_callback),
+                    );
+                    let msg = match result {
+                        Ok(count) => Ok(format!(
+                            "Exported {} messages to {}",
+                            count, output_path
+                        )),
+                        Err(e) => Err(e.to_string()),
+                    };
+                    let _ = tx.send(AsyncResult::ExportComplete(msg));
+                }
+                ExportTask::ImportMeilisearch {
+                    input_path,
+                    url,
+                    api_key,
+                    index_name,
+                    clear,
+                } => {
+                    let progress_callback = move |current: usize, total: usize, name: &str| {
+                        let _ = progress_tx.send((current, total, name.to_string()));
+                    };
+                    let result = rt.block_on(async {
+                        import_index_to_meilisearch(
+                            &input_path,
+                            &url,
+                            &api_key,
+                            &index_name,
+                            clear,
+                            Some(&progress_callback),
+                        )
+                        .await
+                    });
+                    let msg = match result {
+                        Ok(r) => Ok(format!(
+                            "Imported {} documents to Meilisearch index '{}'",
+                            r.total, r.index_name
+                        )),
+                        Err(e) => Err(e.to_string()),
+                    };
+                    let _ = tx.send(AsyncResult::ExportComplete(msg));
+                }
             }
         });
     }
@@ -237,6 +294,27 @@ impl App {
                 }
                 AsyncResult::ChannelsLoaded(Err(msg)) => {
                     self.screen = Screen::Error { message: msg };
+                }
+                AsyncResult::QueryResult(Ok(hits)) => {
+                    if let Screen::QueryMeilisearch {
+                        results,
+                        result_state,
+                        error,
+                        ..
+                    } = &mut self.screen
+                    {
+                        *results = Some(hits);
+                        *error = None;
+                        if results.as_ref().map(|r| !r.is_empty()).unwrap_or(false) {
+                            result_state.select(Some(0));
+                        }
+                    }
+                }
+                AsyncResult::QueryResult(Err(msg)) => {
+                    if let Screen::QueryMeilisearch { error, results, .. } = &mut self.screen {
+                        *error = Some(msg);
+                        *results = None;
+                    }
                 }
             }
         }

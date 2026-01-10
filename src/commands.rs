@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use crate::error::Result;
+use crate::index::export_conversations_to_index;
 use crate::markdown::export_conversations_to_markdown;
+use crate::meilisearch::{import_index_to_meilisearch, query_meilisearch};
 use crate::slack;
 use crate::{default_from_date, default_to_date, load_token, parse_date};
 
@@ -143,5 +145,101 @@ pub async fn run_export_emojis(output: &str, folder: &str) -> Result<()> {
     for error in &result.errors {
         eprintln!("  {}", error);
     }
+    Ok(())
+}
+
+pub fn run_export_index(
+    conversations: &str,
+    users: &str,
+    channels: &str,
+    output: &str,
+) -> Result<()> {
+    println!("Exporting conversations to index...");
+
+    let count = export_conversations_to_index(conversations, users, channels, output)?;
+
+    println!(
+        "Export completed successfully! {} messages exported to {}",
+        count, output
+    );
+    Ok(())
+}
+
+pub async fn run_import_index_meilisearch(
+    input: &str,
+    url: &str,
+    api_key: &str,
+    index_name: &str,
+    clear: bool,
+) -> Result<()> {
+    println!(
+        "Importing index to Meilisearch at {} (index: {})...",
+        url, index_name
+    );
+    if clear {
+        println!("  Index will be cleared (using swap operation)");
+    }
+
+    let progress_callback = |current: usize, total: usize, name: &str| {
+        if total > 0 {
+            println!("  [{}/{}] {}", current, total, name);
+        } else {
+            println!("  {}", name);
+        }
+    };
+
+    let result = import_index_to_meilisearch(
+        input,
+        url,
+        api_key,
+        index_name,
+        clear,
+        Some(&progress_callback),
+    )
+    .await?;
+
+    println!(
+        "Import completed successfully! {} documents imported to index '{}'",
+        result.total, result.index_name
+    );
+    Ok(())
+}
+
+pub async fn run_query_meilisearch(
+    url: &str,
+    api_key: &str,
+    index_name: &str,
+    query: &str,
+    limit: usize,
+) -> Result<()> {
+    println!("Searching '{}' in index '{}'...\n", query, index_name);
+
+    let result = query_meilisearch(url, api_key, index_name, query, limit).await?;
+
+    if result.hits.is_empty() {
+        println!("No results found.");
+    } else {
+        println!(
+            "Found {} results (showing {}, {}ms):\n",
+            result.estimated_total_hits.unwrap_or(result.hits.len()),
+            result.hits.len(),
+            result.processing_time_ms
+        );
+
+        for (i, hit) in result.hits.iter().enumerate() {
+            println!("{}. [{}] #{}", i + 1, hit.date, hit.channel.name);
+            println!("   Users: {}", hit.users.iter().map(|u| u.name.as_str()).collect::<Vec<_>>().join(", "));
+
+            // Show first 200 chars of text
+            let preview: String = hit.text.chars().take(200).collect();
+            let preview = preview.replace('\n', " ");
+            if hit.text.len() > 200 {
+                println!("   {}...\n", preview);
+            } else {
+                println!("   {}\n", preview);
+            }
+        }
+    }
+
     Ok(())
 }

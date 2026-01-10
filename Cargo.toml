@@ -7,6 +7,7 @@ edition = "2024"
 chrono = "0.4.42"
 clap = { version = "4.5.54", features = ["derive"] }
 crossterm = "0.29"
+meilisearch-sdk = "0.32.0"
 ratatui = "0.30.0"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -16,5 +17,6 @@ slack-morphism = { version = "2.17.0", features = ["hyper"] }
 thiserror = "2.0.17"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 toml = "0.9.10"
+uuid = { version = "1.17", features = ["v4"] }
 walkdir = "2.5.0"
 webpage = "2.0.1"
