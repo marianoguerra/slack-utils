@@ -44,6 +44,7 @@ echo "=== Testing slack-utils subcommand help ==="
 cargo run -- ui --help
 cargo run -- export-conversations --help
 cargo run -- export-conversations-week --help
+cargo run -- archive-range --help
 cargo run -- export-users --help
 cargo run -- export-channels --help
 cargo run -- download-attachments --help
@@ -140,6 +141,20 @@ if [ -n "$SLACK_TOKEN" ]; then
     cargo run -- export-emojis --output "$TEMP_DIR/emojis.json" --folder "$TEMP_DIR/emojis"
     test -f "$TEMP_DIR/emojis.json" && echo "export-emojis: OK"
 
+    # Archive range: fetch last 4 weeks
+    # Calculate week numbers (current week and 3 weeks ago)
+    CURRENT_YEAR=$(date +%G)
+    CURRENT_WEEK=$(date +%V)
+    # Calculate 3 weeks ago using date arithmetic
+    THREE_WEEKS_AGO=$(date -d '3 weeks ago' +%G-W%V)
+    FROM_YEAR=$(echo "$THREE_WEEKS_AGO" | cut -d'-' -f1)
+    FROM_WEEK=$(echo "$THREE_WEEKS_AGO" | cut -d'W' -f2)
+    cargo run -- archive-range \
+        --from-year "$FROM_YEAR" --from-week "$FROM_WEEK" \
+        --to-year "$CURRENT_YEAR" --to-week "$CURRENT_WEEK" \
+        --output "$TEMP_DIR/archive"
+    test -d "$TEMP_DIR/archive" && echo "archive-range: OK"
+
     # download-attachments needs a conversations file with actual attachments, skip for now
     echo "download-attachments: SKIPPED (requires conversations with attachments)"
 else
@@ -149,6 +164,7 @@ else
     echo "  - export-conversations: SKIPPED"
     echo "  - export-conversations-week: SKIPPED"
     echo "  - export-emojis: SKIPPED"
+    echo "  - archive-range: SKIPPED"
     echo "  - download-attachments: SKIPPED"
 fi
 

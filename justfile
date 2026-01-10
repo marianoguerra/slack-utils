@@ -45,6 +45,26 @@ export-conversations-week output=conversations_path format=default_format:
 export-conversations-week-custom year week output=conversations_path format=default_format:
     cargo run -- export-conversations-week --year {{year}} --week {{week}} --output {{output}} --format {{format}}
 
+# Archive last 4 weeks to parquet
+archive-last-4-weeks output=conversations_path:
+    #!/usr/bin/env bash
+    CURRENT_YEAR=$(date +%G)
+    CURRENT_WEEK=$(date +%V)
+    THREE_WEEKS_AGO=$(date -d '3 weeks ago' +%G-W%V)
+    FROM_YEAR=$(echo "$THREE_WEEKS_AGO" | cut -d'-' -f1)
+    FROM_WEEK=$(echo "$THREE_WEEKS_AGO" | cut -d'W' -f2)
+    cargo run -- archive-range \
+        --from-year "$FROM_YEAR" --from-week "$FROM_WEEK" \
+        --to-year "$CURRENT_YEAR" --to-week "$CURRENT_WEEK" \
+        --output {{output}}
+
+# Archive a custom range of weeks to parquet
+archive-range from_year from_week to_year to_week output=conversations_path:
+    cargo run -- archive-range \
+        --from-year {{from_year}} --from-week {{from_week}} \
+        --to-year {{to_year}} --to-week {{to_week}} \
+        --output {{output}}
+
 # Export users
 export-users output=users_path format=default_format:
     cargo run -- export-users --output {{output}} --format {{format}}

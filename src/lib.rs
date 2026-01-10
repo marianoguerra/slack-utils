@@ -63,6 +63,48 @@ pub use parquet::{write_channels_parquet, write_conversations_parquet, write_use
 /// Type alias for progress callback functions
 pub type ProgressCallback<'a> = Option<&'a dyn Fn(usize, usize, &str)>;
 
+/// Type alias for rate limit callback functions (wait_secs, attempt, max_attempts)
+pub type RateLimitCallback<'a> = Option<&'a dyn Fn(u64, u32, u32)>;
+
+/// Unified callbacks for Slack API operations
+/// This struct provides a consistent way to handle progress and rate limit
+/// notifications across both CLI and TUI contexts.
+#[derive(Clone, Copy, Default)]
+pub struct SlackApiCallbacks<'a> {
+    /// Called to report progress (current, total, message)
+    pub on_progress: ProgressCallback<'a>,
+    /// Called when rate limited (wait_secs, attempt, max_attempts)
+    pub on_rate_limit: RateLimitCallback<'a>,
+}
+
+impl<'a> SlackApiCallbacks<'a> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_progress(mut self, callback: &'a dyn Fn(usize, usize, &str)) -> Self {
+        self.on_progress = Some(callback);
+        self
+    }
+
+    pub fn with_rate_limit(mut self, callback: &'a dyn Fn(u64, u32, u32)) -> Self {
+        self.on_rate_limit = Some(callback);
+        self
+    }
+
+    pub fn report_progress(&self, current: usize, total: usize, message: &str) {
+        if let Some(cb) = self.on_progress {
+            cb(current, total, message);
+        }
+    }
+
+    pub fn report_rate_limit(&self, wait_secs: u64, attempt: u32, max_attempts: u32) {
+        if let Some(cb) = self.on_rate_limit {
+            cb(wait_secs, attempt, max_attempts);
+        }
+    }
+}
+
 // Re-export command functions for main.rs compatibility
 pub use commands::run_archive_range as run_archive_range_async;
 pub use commands::run_download_attachments;

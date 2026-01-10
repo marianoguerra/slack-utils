@@ -17,7 +17,7 @@ use crate::ui::types::{
 use crate::widgets::TextInput;
 use crate::{
     current_iso_week, default_from_date, default_to_date, parse_date, week_to_date_range,
-    CHANNELS_FILE,
+    SlackApiCallbacks, CHANNELS_FILE,
 };
 
 pub struct App {
@@ -120,9 +120,20 @@ impl App {
                     selected_channels,
                     format,
                 } => {
-                    let progress_callback = |current: usize, total: usize, name: &str| {
-                        let _ = progress_tx.send((current, total, name.to_string()));
+                    let progress_tx_clone = progress_tx.clone();
+                    let progress_callback = move |current: usize, total: usize, name: &str| {
+                        let _ = progress_tx_clone.send((current, total, name.to_string()));
                     };
+                    let rate_limit_callback = |wait_secs: u64, attempt: u32, max: u32| {
+                        let _ = progress_tx.send((
+                            attempt as usize,
+                            max as usize,
+                            format!("Rate limited, waiting {}s...", wait_secs),
+                        ));
+                    };
+                    let callbacks = SlackApiCallbacks::new()
+                        .with_progress(&progress_callback)
+                        .with_rate_limit(&rate_limit_callback);
                     let result = rt.block_on(async {
                         let from = parse_date(&from_date)?;
                         let to = parse_date(&to_date)?;
@@ -132,7 +143,7 @@ impl App {
                             to,
                             Path::new(&output_path),
                             Some(&selected_channels),
-                            Some(progress_callback),
+                            callbacks,
                             format,
                         )
                         .await?;
@@ -149,9 +160,20 @@ impl App {
                     selected_channels,
                     format,
                 } => {
-                    let progress_callback = |current: usize, total: usize, name: &str| {
-                        let _ = progress_tx.send((current, total, name.to_string()));
+                    let progress_tx_clone = progress_tx.clone();
+                    let progress_callback = move |current: usize, total: usize, name: &str| {
+                        let _ = progress_tx_clone.send((current, total, name.to_string()));
                     };
+                    let rate_limit_callback = |wait_secs: u64, attempt: u32, max: u32| {
+                        let _ = progress_tx.send((
+                            attempt as usize,
+                            max as usize,
+                            format!("Rate limited, waiting {}s...", wait_secs),
+                        ));
+                    };
+                    let callbacks = SlackApiCallbacks::new()
+                        .with_progress(&progress_callback)
+                        .with_rate_limit(&rate_limit_callback);
                     let result = rt.block_on(async {
                         let (from, to) = week_to_date_range(year, week)?;
                         let count = slack::export_conversations(
@@ -160,7 +182,7 @@ impl App {
                             to,
                             Path::new(&output_path),
                             Some(&selected_channels),
-                            Some(progress_callback),
+                            callbacks,
                             format,
                         )
                         .await?;
@@ -180,9 +202,20 @@ impl App {
                     to_week,
                     output_path,
                 } => {
-                    let progress_callback = |current: usize, total: usize, name: &str| {
-                        let _ = progress_tx.send((current, total, name.to_string()));
+                    let progress_tx_clone = progress_tx.clone();
+                    let progress_callback = move |current: usize, total: usize, name: &str| {
+                        let _ = progress_tx_clone.send((current, total, name.to_string()));
                     };
+                    let rate_limit_callback = |wait_secs: u64, attempt: u32, max: u32| {
+                        let _ = progress_tx.send((
+                            attempt as usize,
+                            max as usize,
+                            format!("Rate limited, waiting {}s...", wait_secs),
+                        ));
+                    };
+                    let callbacks = SlackApiCallbacks::new()
+                        .with_progress(&progress_callback)
+                        .with_rate_limit(&rate_limit_callback);
                     let result = rt.block_on(async {
                         let r = slack::archive_range(
                             &token,
@@ -191,12 +224,12 @@ impl App {
                             to_year,
                             to_week,
                             Path::new(&output_path),
-                            Some(progress_callback),
+                            callbacks,
                         )
                         .await?;
                         Ok::<_, AppError>(format!(
-                            "Archived {} messages in {} weeks ({} skipped, {} rate limit waits) to {}",
-                            r.total_messages, r.weeks_processed, r.weeks_skipped, r.rate_limit_waits, output_path
+                            "Archived {} messages in {} weeks ({} skipped) to {}",
+                            r.total_messages, r.weeks_processed, r.weeks_skipped, output_path
                         ))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(

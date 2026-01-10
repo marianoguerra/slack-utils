@@ -7,7 +7,7 @@ use crate::meilisearch::{import_index_to_meilisearch, query_meilisearch};
 use crate::slack;
 use crate::{
     current_iso_week, default_from_date, default_to_date, load_token, parse_date,
-    week_to_date_range, OutputFormat,
+    week_to_date_range, OutputFormat, SlackApiCallbacks,
 };
 
 /// Derive output path based on format
@@ -16,6 +16,23 @@ fn derive_output_path(base: &str, format: OutputFormat) -> String {
         OutputFormat::Json => format!("{}.json", base),
         OutputFormat::Parquet => format!("{}.parquet", base),
     }
+}
+
+/// CLI progress callback - prints progress to stdout
+fn cli_progress(current: usize, total: usize, name: &str) {
+    if total > 0 {
+        println!("  [{}/{}] {}", current, total, name);
+    } else {
+        println!("  {}", name);
+    }
+}
+
+/// CLI rate limit callback - prints rate limit info to stderr
+fn cli_rate_limit(wait_secs: u64, attempt: u32, max_attempts: u32) {
+    eprintln!(
+        "  Rate limited, waiting {}s (attempt {}/{})",
+        wait_secs, attempt, max_attempts
+    );
 }
 
 pub async fn run_export_conversations(
@@ -47,13 +64,9 @@ pub async fn run_export_conversations(
         from_date, to_date, output_path, format
     );
 
-    let progress_callback = |current: usize, total: usize, name: &str| {
-        if total > 0 {
-            println!("  [{}/{}] {}", current, total, name);
-        } else {
-            println!("  {}", name);
-        }
-    };
+    let callbacks = SlackApiCallbacks::new()
+        .with_progress(&cli_progress)
+        .with_rate_limit(&cli_rate_limit);
 
     let count = slack::export_conversations(
         &token,
@@ -61,7 +74,7 @@ pub async fn run_export_conversations(
         to_date,
         Path::new(&output_path),
         None,
-        Some(progress_callback),
+        callbacks,
         format,
     )
     .await?;
@@ -101,13 +114,9 @@ pub async fn run_export_conversations_week(
         year, week, from_date, to_date, output_path, format
     );
 
-    let progress_callback = |current: usize, total: usize, name: &str| {
-        if total > 0 {
-            println!("  [{}/{}] {}", current, total, name);
-        } else {
-            println!("  {}", name);
-        }
-    };
+    let callbacks = SlackApiCallbacks::new()
+        .with_progress(&cli_progress)
+        .with_rate_limit(&cli_rate_limit);
 
     let count = slack::export_conversations(
         &token,
@@ -115,7 +124,7 @@ pub async fn run_export_conversations_week(
         to_date,
         Path::new(&output_path),
         None,
-        Some(progress_callback),
+        callbacks,
         format,
     )
     .await?;
@@ -150,13 +159,9 @@ pub async fn run_archive_range(
         from_year, from_week, to_year, to_week, output
     );
 
-    let progress_callback = |current: usize, total: usize, name: &str| {
-        if total > 0 {
-            println!("  [{}/{}] {}", current, total, name);
-        } else {
-            println!("  {}", name);
-        }
-    };
+    let callbacks = SlackApiCallbacks::new()
+        .with_progress(&cli_progress)
+        .with_rate_limit(&cli_rate_limit);
 
     let result = slack::archive_range(
         &token,
@@ -165,13 +170,13 @@ pub async fn run_archive_range(
         to_year,
         to_week,
         Path::new(output),
-        Some(progress_callback),
+        callbacks,
     )
     .await?;
 
     println!(
-        "Archive completed! {} messages in {} weeks ({} skipped, {} rate limit waits).",
-        result.total_messages, result.weeks_processed, result.weeks_skipped, result.rate_limit_waits
+        "Archive completed! {} messages in {} weeks ({} skipped).",
+        result.total_messages, result.weeks_processed, result.weeks_skipped
     );
     Ok(())
 }

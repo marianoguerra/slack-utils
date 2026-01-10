@@ -9,16 +9,24 @@ use serde::{Deserialize, Serialize};
 use slack_morphism::errors::SlackClientError;
 use slack_morphism::prelude::*;
 
-use crate::{parquet, week_to_date_range, AppError, OutputFormat, ProgressCallback, Result};
+use crate::{
+    parquet, week_to_date_range, AppError, OutputFormat, ProgressCallback, RateLimitCallback,
+    SlackApiCallbacks, Result,
+};
 
 /// Maximum retries for rate-limited API calls
 const MAX_RATE_LIMIT_RETRIES: u32 = 5;
 
 /// Handle a Slack API result, retrying on rate limit errors.
 /// Returns Ok(response) on success, or Err on non-rate-limit errors or max retries exceeded.
+/// Optionally accepts a RateLimitCallback to report rate limit waits.
 macro_rules! with_rate_limit_retry {
-    ($api_call:expr) => {{
+    ($api_call:expr) => {
+        with_rate_limit_retry!($api_call, None::<&dyn Fn(u64, u32, u32)>)
+    };
+    ($api_call:expr, $on_rate_limit:expr) => {{
         let mut retries = 0u32;
+        let callback: RateLimitCallback = $on_rate_limit;
         loop {
             match $api_call.await {
                 Ok(response) => break Ok(response),
@@ -31,6 +39,9 @@ macro_rules! with_rate_limit_retry {
                                 "Rate limited {} times, giving up",
                                 retries
                             )));
+                        }
+                        if let Some(cb) = callback {
+                            cb(retry_after_secs, retries, MAX_RATE_LIMIT_RETRIES);
                         }
                         tokio::time::sleep(Duration::from_secs(retry_after_secs)).await;
                         continue;
@@ -219,23 +230,16 @@ pub async fn export_channels(token: &str, output_path: &Path, format: OutputForm
     Ok(count)
 }
 
-pub async fn export_conversations<F>(
+pub async fn export_conversations(
     token: &str,
     from_date: NaiveDate,
     to_date: NaiveDate,
     output_path: &Path,
     selected_channel_ids: Option<&HashSet<String>>,
-    progress_callback: Option<F>,
+    callbacks: SlackApiCallbacks<'_>,
     format: OutputFormat,
-) -> Result<usize>
-where
-    F: Fn(usize, usize, &str),
-{
-    let report_progress = |current: usize, total: usize, msg: &str| {
-        if let Some(ref cb) = progress_callback {
-            cb(current, total, msg);
-        }
-    };
+) -> Result<usize> {
+    let rate_limit_cb = callbacks.on_rate_limit;
 
     let client = SlackClient::new(
         SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
@@ -246,7 +250,7 @@ where
     let oldest_ts = date_to_slack_ts(from_date);
     let latest_ts = date_to_slack_ts(to_date.succ_opt().unwrap_or(to_date));
 
-    report_progress(0, 0, "Fetching channel list...");
+    callbacks.report_progress(0, 0, "Fetching channel list...");
 
     let mut all_channels = Vec::new();
     let mut cursor: Option<SlackCursorId> = None;
@@ -257,7 +261,8 @@ where
             .with_types(vec![SlackConversationType::Public])
             .opt_cursor(cursor);
 
-        let response = with_rate_limit_retry!(session.conversations_list(&request))?;
+        let response =
+            with_rate_limit_retry!(session.conversations_list(&request), rate_limit_cb)?;
 
         all_channels.extend(response.channels);
 
@@ -289,7 +294,7 @@ where
         let channel_id = &channel.id;
         let channel_name = channel.name.clone().unwrap_or_else(|| "unknown".to_string());
 
-        report_progress(
+        callbacks.report_progress(
             channel_idx + 1,
             total_channels,
             &format!("Fetching #{}", channel_name),
@@ -306,7 +311,8 @@ where
                 .with_limit(200)
                 .opt_cursor(msg_cursor);
 
-            let response = with_rate_limit_retry!(session.conversations_history(&request))?;
+            let response =
+                with_rate_limit_retry!(session.conversations_history(&request), rate_limit_cb)?;
 
             messages.extend(response.messages);
 
@@ -341,7 +347,7 @@ where
                 && reply_count > 0
             {
                 thread_idx += 1;
-                report_progress(
+                callbacks.report_progress(
                     thread_idx,
                     total_threads,
                     &format!("#{} - fetching thread {}/{}", channel_name, thread_idx, total_threads),
@@ -358,8 +364,10 @@ where
                     .with_limit(200)
                     .opt_cursor(reply_cursor);
 
-                    let response =
-                        with_rate_limit_retry!(session.conversations_replies(&request))?;
+                    let response = with_rate_limit_retry!(
+                        session.conversations_replies(&request),
+                        rate_limit_cb
+                    )?;
 
                     // Skip the first message (parent) if it matches our message ts
                     let thread_replies: Vec<_> = response
@@ -398,7 +406,7 @@ where
         }
     }
 
-    report_progress(total_channels, total_channels, "Writing output file...");
+    callbacks.report_progress(total_channels, total_channels, "Writing output file...");
 
     let total_messages: usize = all_conversations.iter().map(|c| c.messages.len()).sum();
 
@@ -941,7 +949,6 @@ pub struct ArchiveRangeResult {
     pub total_messages: usize,
     pub weeks_processed: usize,
     pub weeks_skipped: usize,
-    pub rate_limit_waits: usize,
 }
 
 /// Generate all ISO weeks in a range (inclusive)
@@ -1002,23 +1009,15 @@ fn slack_error_to_app_error(error: SlackClientError) -> AppError {
 }
 
 /// Archive conversations for a range of ISO weeks to parquet format
-pub async fn archive_range<F>(
+pub async fn archive_range(
     token: &str,
     from_year: i32,
     from_week: u32,
     to_year: i32,
     to_week: u32,
     output_path: &Path,
-    progress_callback: Option<F>,
-) -> Result<ArchiveRangeResult>
-where
-    F: Fn(usize, usize, &str),
-{
-    let report_progress = |current: usize, total: usize, msg: &str| {
-        if let Some(ref cb) = progress_callback {
-            cb(current, total, msg);
-        }
-    };
+    callbacks: SlackApiCallbacks<'_>,
+) -> Result<ArchiveRangeResult> {
 
     let weeks = generate_weeks_in_range(from_year, from_week, to_year, to_week);
     let total_weeks = weeks.len();
@@ -1043,14 +1042,17 @@ where
     let mut total_messages = 0usize;
     let mut weeks_processed = 0usize;
     let mut weeks_skipped = 0usize;
-    // Rate limits are now handled at individual API call level
-    let rate_limit_waits = 0usize;
 
-    report_progress(
+    callbacks.report_progress(
         0,
         total_weeks,
         &format!("Archiving {} weeks...", total_weeks),
     );
+
+    // Create callbacks for export_conversations without progress (we report at week level)
+    // but with rate limit callback
+    let export_callbacks = SlackApiCallbacks::new()
+        .with_rate_limit(callbacks.on_rate_limit.unwrap_or(&|_, _, _| {}));
 
     for (idx, (year, week)) in weeks.iter().enumerate() {
         let week_label = format!("{}-W{:02}", year, week);
@@ -1058,7 +1060,7 @@ where
         // Only skip if file existed BEFORE this run started
         // (not created by overflow messages during this run)
         if pre_existing_files.contains(&(*year, *week)) {
-            report_progress(
+            callbacks.report_progress(
                 idx + 1,
                 total_weeks,
                 &format!("{} - already exists, skipping", week_label),
@@ -1067,7 +1069,7 @@ where
             continue;
         }
 
-        report_progress(idx + 1, total_weeks, &format!("{} - fetching...", week_label));
+        callbacks.report_progress(idx + 1, total_weeks, &format!("{} - fetching...", week_label));
 
         // Convert week to date range
         let (from_date, to_date) = week_to_date_range(*year, *week)?;
@@ -1079,14 +1081,14 @@ where
             to_date,
             output_path,
             None, // All channels
-            None::<fn(usize, usize, &str)>, // No sub-progress for individual weeks
+            export_callbacks,
             OutputFormat::Parquet,
         )
         .await?;
 
         total_messages += count;
         weeks_processed += 1;
-        report_progress(
+        callbacks.report_progress(
             idx + 1,
             total_weeks,
             &format!("{} - {} messages", week_label, count),
@@ -1097,6 +1099,5 @@ where
         total_messages,
         weeks_processed,
         weeks_skipped,
-        rate_limit_waits,
     })
 }
