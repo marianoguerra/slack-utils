@@ -1,4 +1,5 @@
-use std::io;
+use std::fs::File;
+use std::io::{self, BufReader};
 use std::time::Duration;
 
 use chrono::{Datelike, Local, NaiveDate};
@@ -139,6 +140,16 @@ pub fn default_to_date() -> NaiveDate {
 /// Parse a date string in YYYY-MM-DD format
 pub fn parse_date(s: &str) -> Result<NaiveDate> {
     NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| AppError::InvalidDate(s.to_string()))
+}
+
+/// Load and deserialize a JSON file
+pub fn load_json_file<T: serde::de::DeserializeOwned>(path: &str) -> Result<T> {
+    let file = File::open(path).map_err(|e| AppError::ReadFile {
+        path: path.to_string(),
+        source: e,
+    })?;
+    let reader = BufReader::new(file);
+    serde_json::from_reader(reader).map_err(|e| AppError::JsonParse(e.to_string()))
 }
 
 /// Get current ISO year and week number

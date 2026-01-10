@@ -17,6 +17,18 @@ use crate::{
 /// Maximum retries for rate-limited API calls
 const MAX_RATE_LIMIT_RETRIES: u32 = 5;
 
+/// Creates Slack client, token, and session variables.
+/// The session borrows from both client and token, so we use a macro to expand inline.
+macro_rules! create_slack_session {
+    ($token:expr) => {{
+        let client = SlackClient::new(
+            SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
+        );
+        let token_obj = SlackApiToken::new(SlackApiTokenValue($token.to_string()));
+        (client, token_obj)
+    }};
+}
+
 /// Handle a Slack API result, retrying on rate limit errors.
 /// Returns Ok(response) on success, or Err on non-rate-limit errors or max retries exceeded.
 /// Optionally accepts a RateLimitCallback to report rate limit waits.
@@ -67,14 +79,7 @@ pub struct ChannelInfo {
 }
 
 pub fn load_channels_from_file(path: &Path) -> Result<Vec<ChannelInfo>> {
-    let file = File::open(path).map_err(|e| AppError::ReadFile {
-        path: path.display().to_string(),
-        source: e,
-    })?;
-    let reader = BufReader::new(file);
-
-    let channels: Vec<serde_json::Value> =
-        serde_json::from_reader(reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let channels: Vec<serde_json::Value> = crate::load_json_file(&path.display().to_string())?;
 
     let channel_infos = channels
         .into_iter()
@@ -93,11 +98,8 @@ pub fn load_channels_from_file(path: &Path) -> Result<Vec<ChannelInfo>> {
 }
 
 pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
-    let client = SlackClient::new(
-        SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
-    );
-    let token = SlackApiToken::new(SlackApiTokenValue(token.to_string()));
-    let session = client.open_session(&token);
+    let (client, token_obj) = create_slack_session!(token);
+    let session = client.open_session(&token_obj);
 
     let mut all_channels = Vec::new();
     let mut cursor: Option<SlackCursorId> = None;
@@ -132,11 +134,8 @@ pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
 }
 
 pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat) -> Result<usize> {
-    let client = SlackClient::new(
-        SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
-    );
-    let token = SlackApiToken::new(SlackApiTokenValue(token.to_string()));
-    let session = client.open_session(&token);
+    let (client, token_obj) = create_slack_session!(token);
+    let session = client.open_session(&token_obj);
 
     let mut all_users = Vec::new();
     let mut cursor: Option<SlackCursorId> = None;
@@ -181,11 +180,8 @@ pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat)
 }
 
 pub async fn export_channels(token: &str, output_path: &Path, format: OutputFormat) -> Result<usize> {
-    let client = SlackClient::new(
-        SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
-    );
-    let token = SlackApiToken::new(SlackApiTokenValue(token.to_string()));
-    let session = client.open_session(&token);
+    let (client, token_obj) = create_slack_session!(token);
+    let session = client.open_session(&token_obj);
 
     let mut all_channels = Vec::new();
     let mut cursor: Option<SlackCursorId> = None;
@@ -240,11 +236,7 @@ pub async fn export_conversations(
     format: OutputFormat,
 ) -> Result<usize> {
     let rate_limit_cb = callbacks.on_rate_limit;
-
-    let client = SlackClient::new(
-        SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
-    );
-    let token_obj = SlackApiToken::new(SlackApiTokenValue(token.to_string()));
+    let (client, token_obj) = create_slack_session!(token);
     let session = client.open_session(&token_obj);
 
     let oldest_ts = date_to_slack_ts(from_date);
@@ -750,26 +742,49 @@ pub async fn fetch_emojis(
 
     report_progress(0, 0, "Fetching emoji list...");
 
-    // Fetch emoji list using reqwest (emoji.list API)
+    // Fetch emoji list using reqwest (emoji.list API) with rate limit retry
     let client = reqwest::Client::new();
-    let response = client
-        .get("https://slack.com/api/emoji.list")
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| AppError::SlackApi(format!("Failed to fetch emojis: {}", e)))?;
+    let mut retries = 0u32;
+    let emoji_response: serde_json::Value = loop {
+        let response = client
+            .get("https://slack.com/api/emoji.list")
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await
+            .map_err(|e| AppError::SlackApi(format!("Failed to fetch emojis: {}", e)))?;
 
-    if !response.status().is_success() {
-        return Err(AppError::SlackApi(format!(
-            "HTTP {} fetching emojis",
-            response.status()
-        )));
-    }
+        // Handle rate limiting (HTTP 429)
+        if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            retries += 1;
+            if retries > MAX_RATE_LIMIT_RETRIES {
+                return Err(AppError::SlackApi(format!(
+                    "Rate limited {} times fetching emojis, giving up",
+                    retries
+                )));
+            }
+            let retry_after = response
+                .headers()
+                .get("Retry-After")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(60);
+            report_progress(0, 0, &format!("Rate limited, waiting {}s...", retry_after));
+            tokio::time::sleep(Duration::from_secs(retry_after)).await;
+            continue;
+        }
 
-    let emoji_response: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| AppError::JsonParse(format!("Failed to parse emoji response: {}", e)))?;
+        if !response.status().is_success() {
+            return Err(AppError::SlackApi(format!(
+                "HTTP {} fetching emojis",
+                response.status()
+            )));
+        }
+
+        break response
+            .json()
+            .await
+            .map_err(|e| AppError::JsonParse(format!("Failed to parse emoji response: {}", e)))?;
+    };
 
     if emoji_response.get("ok").and_then(|v: &serde_json::Value| v.as_bool()) != Some(true) {
         let error = emoji_response

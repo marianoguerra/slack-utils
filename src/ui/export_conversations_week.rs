@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use super::types::{ChannelSelection, ConvExportWeekField};
+use super::{render_text_field, types::{ChannelSelection, ConvExportWeekField}};
 use crate::widgets::TextInput;
 
 #[allow(clippy::too_many_arguments)]
@@ -40,64 +40,31 @@ pub fn render(
         .split(inner);
 
     // Year field
-    let year_active = active_field == ConvExportWeekField::Year;
-    let year_style = if year_active {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let year_block = Block::default()
-        .borders(Borders::ALL)
-        .title("Year")
-        .border_style(year_style);
-    let year_inner = year_block.inner(chunks[0]);
-    f.render_widget(year_block, chunks[0]);
-    if year_active {
-        year.render(f, year_inner, year_style);
-    } else {
-        let year_para = Paragraph::new(year.text());
-        f.render_widget(year_para, year_inner);
-    }
+    render_text_field(
+        f,
+        year,
+        "Year",
+        active_field == ConvExportWeekField::Year,
+        chunks[0],
+    );
 
     // Week field
-    let week_active = active_field == ConvExportWeekField::Week;
-    let week_style = if week_active {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let week_block = Block::default()
-        .borders(Borders::ALL)
-        .title("Week (1-53)")
-        .border_style(week_style);
-    let week_inner = week_block.inner(chunks[1]);
-    f.render_widget(week_block, chunks[1]);
-    if week_active {
-        week.render(f, week_inner, week_style);
-    } else {
-        let week_para = Paragraph::new(week.text());
-        f.render_widget(week_para, week_inner);
-    }
+    render_text_field(
+        f,
+        week,
+        "Week (1-53)",
+        active_field == ConvExportWeekField::Week,
+        chunks[1],
+    );
 
     // Output Path field
-    let output_active = active_field == ConvExportWeekField::OutputPath;
-    let output_style = if output_active {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let output_block = Block::default()
-        .borders(Borders::ALL)
-        .title("Output Path")
-        .border_style(output_style);
-    let output_inner = output_block.inner(chunks[2]);
-    f.render_widget(output_block, chunks[2]);
-    if output_active {
-        output_path.render(f, output_inner, output_style);
-    } else {
-        let output_para = Paragraph::new(output_path.text());
-        f.render_widget(output_para, output_inner);
-    }
+    render_text_field(
+        f,
+        output_path,
+        "Output Path",
+        active_field == ConvExportWeekField::OutputPath,
+        chunks[2],
+    );
 
     let channels_block_style = if active_field == ConvExportWeekField::Channels {
         Style::default().fg(Color::Yellow)

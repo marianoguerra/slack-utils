@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::BufWriter;
 
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
@@ -89,13 +89,7 @@ pub fn export_conversations_to_index_with_progress(
     report_progress(0, 100, "Loading users...");
 
     // Load users.json to build user_id -> display_name map
-    let users_file = File::open(users_path).map_err(|e| AppError::ReadFile {
-        path: users_path.to_string(),
-        source: e,
-    })?;
-    let users_reader = BufReader::new(users_file);
-    let users_data: Vec<serde_json::Value> =
-        serde_json::from_reader(users_reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let users_data: Vec<serde_json::Value> = crate::load_json_file(users_path)?;
 
     let user_names: HashMap<String, String> = users_data
         .iter()
@@ -117,13 +111,7 @@ pub fn export_conversations_to_index_with_progress(
     report_progress(0, 100, "Loading channels...");
 
     // Load channels.json to build channel_id -> channel_name map
-    let channels_file = File::open(channels_path).map_err(|e| AppError::ReadFile {
-        path: channels_path.to_string(),
-        source: e,
-    })?;
-    let channels_reader = BufReader::new(channels_file);
-    let channels_data: Vec<serde_json::Value> =
-        serde_json::from_reader(channels_reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let channels_data: Vec<serde_json::Value> = crate::load_json_file(channels_path)?;
 
     let channel_names: HashMap<String, String> = channels_data
         .iter()
@@ -154,13 +142,7 @@ pub fn export_conversations_to_index_with_progress(
     report_progress(0, 100, "Loading conversations...");
 
     // Load conversations.json
-    let conv_file = File::open(conversations_path).map_err(|e| AppError::ReadFile {
-        path: conversations_path.to_string(),
-        source: e,
-    })?;
-    let conv_reader = BufReader::new(conv_file);
-    let conversations: Vec<serde_json::Value> =
-        serde_json::from_reader(conv_reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
+    let conversations: Vec<serde_json::Value> = crate::load_json_file(conversations_path)?;
 
     // Count total messages for progress reporting
     let total_messages: usize = conversations

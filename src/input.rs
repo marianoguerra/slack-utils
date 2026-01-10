@@ -10,8 +10,8 @@ use crate::settings::Settings;
 use crate::ui::types::{
     ArchiveRangeField, AsyncResult, ConvExportField, ConvExportWeekField,
     DownloadAttachmentsField, EditConvPathField, EditableChannelList, ExportEmojisField,
-    ExportIndexField, ExportTask, ImportMeilisearchField, MarkdownExportField, MenuItem,
-    QueryMeilisearchField, Screen,
+    ExportIndexField, ExportTask, ImportMeilisearchField, ListNavigation, MarkdownExportField,
+    MenuItem, QueryMeilisearchField, Screen,
 };
 use crate::widgets::TextInput;
 use crate::OutputFormat;

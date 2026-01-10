@@ -5,6 +5,52 @@ use crate::slack::ChannelInfo;
 use crate::widgets::TextInput;
 use crate::OutputFormat;
 
+/// Trait for types that support list navigation with wrapping.
+/// Provides default implementations for next/previous that wrap around.
+pub trait ListNavigation {
+    /// Returns the number of items in the list.
+    fn items_len(&self) -> usize;
+
+    /// Returns a mutable reference to the ListState.
+    fn list_state_mut(&mut self) -> &mut ListState;
+
+    /// Move selection to the next item, wrapping to the first.
+    fn next(&mut self) {
+        if self.items_len() == 0 {
+            return;
+        }
+        let i = match self.list_state_mut().selected() {
+            Some(i) => {
+                if i >= self.items_len() - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.list_state_mut().select(Some(i));
+    }
+
+    /// Move selection to the previous item, wrapping to the last.
+    fn previous(&mut self) {
+        if self.items_len() == 0 {
+            return;
+        }
+        let i = match self.list_state_mut().selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.items_len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.list_state_mut().select(Some(i));
+    }
+}
+
 // Field enums for different screens
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ConvExportField {
@@ -338,40 +384,6 @@ impl EditableChannel {
         self.messages.iter().filter(|m| m.enabled).count()
     }
 
-    pub fn next(&mut self) {
-        if self.messages.is_empty() {
-            return;
-        }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i >= self.messages.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.list_state.select(Some(i));
-    }
-
-    pub fn previous(&mut self) {
-        if self.messages.is_empty() {
-            return;
-        }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.messages.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.list_state.select(Some(i));
-    }
-
     pub fn toggle_current(&mut self) {
         if let Some(idx) = self.list_state.selected()
             && let Some(msg) = self.messages.get_mut(idx)
@@ -407,6 +419,16 @@ impl EditableChannel {
     }
 }
 
+impl ListNavigation for EditableChannel {
+    fn items_len(&self) -> usize {
+        self.messages.len()
+    }
+
+    fn list_state_mut(&mut self) -> &mut ListState {
+        &mut self.list_state
+    }
+}
+
 // Editable channel list type
 #[derive(Debug, Clone)]
 pub struct EditableChannelList {
@@ -431,40 +453,6 @@ impl EditableChannelList {
             list_state,
             export_path: "./selected-conversations.json".to_string(),
         }
-    }
-
-    pub fn next(&mut self) {
-        if self.channels.is_empty() {
-            return;
-        }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i >= self.channels.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.list_state.select(Some(i));
-    }
-
-    pub fn previous(&mut self) {
-        if self.channels.is_empty() {
-            return;
-        }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.channels.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.list_state.select(Some(i));
     }
 
     pub fn move_current_up(&mut self) {
@@ -555,6 +543,16 @@ impl EditableChannelList {
     }
 }
 
+impl ListNavigation for EditableChannelList {
+    fn items_len(&self) -> usize {
+        self.channels.len()
+    }
+
+    fn list_state_mut(&mut self) -> &mut ListState {
+        &mut self.list_state
+    }
+}
+
 // Channel selection type
 #[derive(Debug, Clone)]
 pub struct ChannelSelection {
@@ -611,42 +609,18 @@ impl ChannelSelection {
         self.selected.clear();
     }
 
-    pub fn next(&mut self) {
-        if self.channels.is_empty() {
-            return;
-        }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i >= self.channels.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.list_state.select(Some(i));
-    }
-
-    pub fn previous(&mut self) {
-        if self.channels.is_empty() {
-            return;
-        }
-        let i = match self.list_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.channels.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.list_state.select(Some(i));
-    }
-
     pub fn selected_ids(&self) -> Vec<String> {
         self.selected.iter().cloned().collect()
+    }
+}
+
+impl ListNavigation for ChannelSelection {
+    fn items_len(&self) -> usize {
+        self.channels.len()
+    }
+
+    fn list_state_mut(&mut self) -> &mut ListState {
+        &mut self.list_state
     }
 }
 

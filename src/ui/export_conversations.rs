@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use super::types::{ChannelSelection, ConvExportField};
+use super::{render_text_field, types::{ChannelSelection, ConvExportField}};
 use crate::widgets::TextInput;
 
 #[allow(clippy::too_many_arguments)]
@@ -40,64 +40,31 @@ pub fn render(
         .split(inner);
 
     // From Date field
-    let from_active = active_field == ConvExportField::FromDate;
-    let from_style = if from_active {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let from_block = Block::default()
-        .borders(Borders::ALL)
-        .title("From Date (YYYY-MM-DD)")
-        .border_style(from_style);
-    let from_inner = from_block.inner(chunks[0]);
-    f.render_widget(from_block, chunks[0]);
-    if from_active {
-        from_date.render(f, from_inner, from_style);
-    } else {
-        let from_para = Paragraph::new(from_date.text());
-        f.render_widget(from_para, from_inner);
-    }
+    render_text_field(
+        f,
+        from_date,
+        "From Date (YYYY-MM-DD)",
+        active_field == ConvExportField::FromDate,
+        chunks[0],
+    );
 
     // To Date field
-    let to_active = active_field == ConvExportField::ToDate;
-    let to_style = if to_active {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let to_block = Block::default()
-        .borders(Borders::ALL)
-        .title("To Date (YYYY-MM-DD)")
-        .border_style(to_style);
-    let to_inner = to_block.inner(chunks[1]);
-    f.render_widget(to_block, chunks[1]);
-    if to_active {
-        to_date.render(f, to_inner, to_style);
-    } else {
-        let to_para = Paragraph::new(to_date.text());
-        f.render_widget(to_para, to_inner);
-    }
+    render_text_field(
+        f,
+        to_date,
+        "To Date (YYYY-MM-DD)",
+        active_field == ConvExportField::ToDate,
+        chunks[1],
+    );
 
     // Output Path field
-    let output_active = active_field == ConvExportField::OutputPath;
-    let output_style = if output_active {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let output_block = Block::default()
-        .borders(Borders::ALL)
-        .title("Output Path")
-        .border_style(output_style);
-    let output_inner = output_block.inner(chunks[2]);
-    f.render_widget(output_block, chunks[2]);
-    if output_active {
-        output_path.render(f, output_inner, output_style);
-    } else {
-        let output_para = Paragraph::new(output_path.text());
-        f.render_widget(output_para, output_inner);
-    }
+    render_text_field(
+        f,
+        output_path,
+        "Output Path",
+        active_field == ConvExportField::OutputPath,
+        chunks[2],
+    );
 
     let channels_block_style = if active_field == ConvExportField::Channels {
         Style::default().fg(Color::Yellow)

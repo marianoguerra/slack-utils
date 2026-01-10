@@ -23,6 +23,32 @@ use ratatui::{
 pub use types::*;
 
 use crate::app::App;
+use crate::widgets::TextInput;
+
+/// Renders a text input field with a title and active state styling.
+/// When active, shows cursor; when inactive, shows plain text.
+pub fn render_text_field(f: &mut Frame, input: &TextInput, title: &str, active: bool, area: Rect) {
+    let style = if active {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .border_style(style);
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    if active {
+        input.render(f, inner, style);
+    } else {
+        let para = Paragraph::new(input.text());
+        f.render_widget(para, inner);
+    }
+}
 
 pub fn ui(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()

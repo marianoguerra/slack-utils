@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
 };
 
-use super::types::ArchiveRangeField;
+use super::{render_text_field, types::ArchiveRangeField};
 use crate::widgets::TextInput;
 
 #[allow(clippy::too_many_arguments)]
@@ -100,33 +100,4 @@ pub fn render(
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center);
     f.render_widget(help, chunks[6]);
-}
-
-fn render_text_field(
-    f: &mut Frame,
-    input: &TextInput,
-    title: &str,
-    active: bool,
-    area: Rect,
-) {
-    let style = if active {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(title)
-        .border_style(style);
-
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
-    if active {
-        input.render(f, inner, style);
-    } else {
-        let para = Paragraph::new(input.text());
-        f.render_widget(para, inner);
-    }
 }
