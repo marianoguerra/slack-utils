@@ -136,8 +136,23 @@ class DuckDBApp {
     }
 
     async init() {
+        this.setDefaultDates();
         await this.initDuckDB();
         this.bindEvents();
+        await this.loadInitialData();
+    }
+
+    setDefaultDates() {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setMonth(startDate.getMonth() - 2);
+
+        document.getElementById('start-date').value = this.formatDate(startDate);
+        document.getElementById('end-date').value = this.formatDate(endDate);
+    }
+
+    formatDate(date) {
+        return date.toISOString().split('T')[0];
     }
 
     async initDuckDB() {
@@ -159,18 +174,15 @@ class DuckDBApp {
             this.conn = await this.db.connect();
 
             console.log('DuckDB initialized successfully');
-            this.updateStatus('DuckDB ready. Load parquet files to begin.', 'success');
         } catch (error) {
             console.error('Failed to initialize DuckDB:', error);
-            this.updateStatus(`Failed to initialize DuckDB: ${error.message}`, 'error');
+            this.showLoadError(`Failed to initialize DuckDB: ${error.message}`);
         }
     }
 
     bindEvents() {
-        // File inputs
-        document.getElementById('conversations-files').addEventListener('change', (e) => this.loadConversations(e));
-        document.getElementById('users-file').addEventListener('change', (e) => this.loadParquet(e, 'users'));
-        document.getElementById('channels-file').addEventListener('change', (e) => this.loadParquet(e, 'channels'));
+        // Load conversations button
+        document.getElementById('load-conversations').addEventListener('click', () => this.loadConversations());
 
         // Query controls
         document.getElementById('sample-select').addEventListener('change', (e) => this.selectSampleQuery(e));
@@ -186,18 +198,96 @@ class DuckDBApp {
         });
     }
 
-    async loadConversations(event) {
-        const files = event.target.files;
-        if (!files.length) return;
+    async loadInitialData() {
+        // Load users and channels on startup
+        await Promise.all([
+            this.loadFromAPI('users'),
+            this.loadFromAPI('channels')
+        ]);
+    }
+
+    async loadFromAPI(tableName) {
+        const statusEl = document.getElementById(`${tableName}-status`);
+        statusEl.textContent = 'Loading...';
+        statusEl.className = 'status-value loading';
 
         try {
-            this.updateStatus('Loading conversation files...', 'success');
+            const response = await fetch(`/api/${tableName}.parquet`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
 
-            // Register all files and create a unified view
+            const arrayBuffer = await response.arrayBuffer();
+            const fileName = `${tableName}.parquet`;
+            await this.db.registerFileBuffer(fileName, new Uint8Array(arrayBuffer));
+
+            // Drop existing table if exists
+            await this.conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+
+            // Create table from parquet
+            await this.conn.query(`CREATE TABLE ${tableName} AS SELECT * FROM parquet_scan('${fileName}')`);
+
+            this.loadedTables.add(tableName);
+
+            const countResult = await this.conn.query(`SELECT COUNT(*) as count FROM ${tableName}`);
+            const count = countResult.toArray()[0].count;
+
+            statusEl.textContent = `${count} rows`;
+            statusEl.className = 'status-value loaded';
+        } catch (error) {
+            console.error(`Failed to load ${tableName}:`, error);
+            statusEl.textContent = `Error: ${error.message}`;
+            statusEl.className = 'status-value error';
+        }
+    }
+
+    async loadConversations() {
+        const startDate = document.getElementById('start-date').value;
+        const endDate = document.getElementById('end-date').value;
+
+        if (!startDate || !endDate) {
+            this.showLoadError('Please select both start and end dates');
+            return;
+        }
+
+        const statusEl = document.getElementById('conversations-status');
+        const loadBtn = document.getElementById('load-conversations');
+
+        statusEl.textContent = 'Loading...';
+        statusEl.className = 'status-value loading';
+        loadBtn.disabled = true;
+        this.hideLoadError();
+
+        try {
+            // Get list of files for the date range
+            const listResponse = await fetch(`/api/conversations?start=${startDate}&end=${endDate}`);
+            if (!listResponse.ok) {
+                throw new Error(`HTTP ${listResponse.status}`);
+            }
+
+            const { files } = await listResponse.json();
+
+            if (files.length === 0) {
+                statusEl.textContent = 'No data for range';
+                statusEl.className = 'status-value';
+                loadBtn.disabled = false;
+                return;
+            }
+
+            // Load each parquet file
             const fileNames = [];
-            for (const file of files) {
-                const arrayBuffer = await file.arrayBuffer();
-                const fileName = `conv_${file.name}`;
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                statusEl.textContent = `Loading ${i + 1}/${files.length}...`;
+
+                const url = `/api/conversations/year=${file.year}/week=${String(file.week).padStart(2, '0')}/${file.filename}`;
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`Failed to load ${file.filename}`);
+                }
+
+                const arrayBuffer = await response.arrayBuffer();
+                const fileName = `conv_${file.year}_${file.week}_${file.filename}`;
                 await this.db.registerFileBuffer(fileName, new Uint8Array(arrayBuffer));
                 fileNames.push(fileName);
             }
@@ -218,38 +308,15 @@ class DuckDBApp {
             const countResult = await this.conn.query('SELECT COUNT(*) as count FROM conversations');
             const count = countResult.toArray()[0].count;
 
-            this.updateStatus(`Loaded ${files.length} conversation file(s) with ${count} messages. Tables: ${[...this.loadedTables].join(', ')}`, 'success');
+            statusEl.textContent = `${count} messages (${files.length} files)`;
+            statusEl.className = 'status-value loaded';
         } catch (error) {
             console.error('Failed to load conversations:', error);
-            this.updateStatus(`Failed to load conversations: ${error.message}`, 'error');
-        }
-    }
-
-    async loadParquet(event, tableName) {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        try {
-            this.updateStatus(`Loading ${tableName}...`, 'success');
-
-            const arrayBuffer = await file.arrayBuffer();
-            await this.db.registerFileBuffer(file.name, new Uint8Array(arrayBuffer));
-
-            // Drop existing table if exists
-            await this.conn.query(`DROP TABLE IF EXISTS ${tableName}`);
-
-            // Create table from parquet
-            await this.conn.query(`CREATE TABLE ${tableName} AS SELECT * FROM parquet_scan('${file.name}')`);
-
-            this.loadedTables.add(tableName);
-
-            const countResult = await this.conn.query(`SELECT COUNT(*) as count FROM ${tableName}`);
-            const count = countResult.toArray()[0].count;
-
-            this.updateStatus(`Loaded ${tableName} with ${count} rows. Tables: ${[...this.loadedTables].join(', ')}`, 'success');
-        } catch (error) {
-            console.error(`Failed to load ${tableName}:`, error);
-            this.updateStatus(`Failed to load ${tableName}: ${error.message}`, 'error');
+            statusEl.textContent = 'Error';
+            statusEl.className = 'status-value error';
+            this.showLoadError(`Failed to load conversations: ${error.message}`);
+        } finally {
+            loadBtn.disabled = false;
         }
     }
 
@@ -263,7 +330,7 @@ class DuckDBApp {
         // Check if required tables are loaded
         const missing = sample.requires.filter(t => !this.loadedTables.has(t));
         if (missing.length > 0) {
-            this.showError(`This query requires: ${missing.join(', ')}. Please load the required parquet files first.`);
+            this.showError(`This query requires: ${missing.join(', ')}. Please load the required data first.`);
         }
 
         document.getElementById('query-input').value = sample.query;
@@ -348,10 +415,14 @@ class DuckDBApp {
         this.hideError();
     }
 
-    updateStatus(message, type) {
-        const status = document.getElementById('loaded-status');
-        status.textContent = message;
-        status.className = `loaded-status ${type}`;
+    showLoadError(message) {
+        const error = document.getElementById('load-error');
+        error.textContent = message;
+        error.classList.remove('hidden');
+    }
+
+    hideLoadError() {
+        document.getElementById('load-error').classList.add('hidden');
     }
 
     showLoading(show) {

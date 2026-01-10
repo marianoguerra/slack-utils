@@ -10,29 +10,37 @@
     <div class="container">
         <header>
             <h1>Slack Utils - DuckDB Query Tool</h1>
-            <p class="subtitle">Load parquet files and run SQL queries in your browser</p>
+            <p class="subtitle">Run SQL queries on Slack parquet exports in your browser</p>
         </header>
 
-        <section class="file-loader">
-            <h2>Load Parquet Files</h2>
-            <div class="file-inputs">
-                <div class="file-group">
-                    <label for="conversations-files">Conversations (select multiple week files):</label>
-                    <input type="file" id="conversations-files" accept=".parquet" multiple>
-                    <span class="file-hint">conversations/year=*/week=*/*.parquet</span>
+        <section class="data-loader">
+            <h2>Data</h2>
+            <div class="data-status" id="data-status">
+                <div class="status-item">
+                    <span class="status-label">Users:</span>
+                    <span class="status-value" id="users-status">Loading...</span>
                 </div>
-                <div class="file-group">
-                    <label for="users-file">Users:</label>
-                    <input type="file" id="users-file" accept=".parquet">
-                    <span class="file-hint">users.parquet</span>
+                <div class="status-item">
+                    <span class="status-label">Channels:</span>
+                    <span class="status-value" id="channels-status">Loading...</span>
                 </div>
-                <div class="file-group">
-                    <label for="channels-file">Channels:</label>
-                    <input type="file" id="channels-file" accept=".parquet">
-                    <span class="file-hint">channels.parquet</span>
+                <div class="status-item">
+                    <span class="status-label">Conversations:</span>
+                    <span class="status-value" id="conversations-status">Not loaded</span>
                 </div>
             </div>
-            <div class="loaded-status" id="loaded-status"></div>
+            <div class="date-range">
+                <div class="date-input">
+                    <label for="start-date">From:</label>
+                    <input type="date" id="start-date">
+                </div>
+                <div class="date-input">
+                    <label for="end-date">To:</label>
+                    <input type="date" id="end-date">
+                </div>
+                <button id="load-conversations" class="primary">Load Conversations</button>
+            </div>
+            <div id="load-error" class="error hidden"></div>
         </section>
 
         <section class="query-section">
@@ -72,6 +80,7 @@
             <div class="query-actions">
                 <button id="run-query" class="primary">Run Query</button>
                 <button id="clear-query">Clear</button>
+                <span class="hint">Ctrl+Enter to run</span>
             </div>
         </section>
 

@@ -13,6 +13,7 @@
     --border: #333;
     --success: #4ade80;
     --error: #f87171;
+    --warning: #fbbf24;
 }
 
 body {
@@ -60,63 +61,79 @@ h2 {
     padding-bottom: 0.5rem;
 }
 
-/* File Loader */
-.file-inputs {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1rem;
+/* Data Loader */
+.data-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
 }
 
-.file-group {
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.status-label {
+    font-weight: 500;
+}
+
+.status-value {
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background: var(--bg-lighter);
+}
+
+.status-value.loaded {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--success);
+}
+
+.status-value.loading {
+    background: rgba(251, 191, 36, 0.15);
+    color: var(--warning);
+}
+
+.status-value.error {
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+}
+
+.date-range {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.date-input {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
 }
 
-.file-group label {
-    font-weight: 500;
-}
-
-.file-group input[type="file"] {
-    background: var(--bg-lighter);
-    border: 1px dashed var(--border);
-    border-radius: 4px;
-    padding: 1rem;
-    color: var(--text);
-    cursor: pointer;
-}
-
-.file-group input[type="file"]:hover {
-    border-color: var(--primary);
-}
-
-.file-hint {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    font-family: monospace;
-}
-
-.loaded-status {
-    margin-top: 1rem;
-    padding: 0.75rem;
-    border-radius: 4px;
+.date-input label {
     font-size: 0.9rem;
+    color: var(--text-muted);
 }
 
-.loaded-status:empty {
-    display: none;
+.date-input input[type="date"] {
+    padding: 0.5rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 1rem;
 }
 
-.loaded-status.success {
-    background: rgba(74, 222, 128, 0.1);
-    border: 1px solid var(--success);
-    color: var(--success);
-}
-
-.loaded-status.error {
-    background: rgba(248, 113, 113, 0.1);
-    border: 1px solid var(--error);
-    color: var(--error);
+.date-input input[type="date"]:focus {
+    outline: none;
+    border-color: var(--primary);
 }
 
 /* Query Section */
@@ -165,8 +182,15 @@ h2 {
 
 .query-actions {
     display: flex;
+    align-items: center;
     gap: 0.75rem;
     margin-top: 1rem;
+}
+
+.query-actions .hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-left: auto;
 }
 
 button {
@@ -223,6 +247,7 @@ button:not(.primary):hover {
     color: var(--error);
     white-space: pre-wrap;
     font-family: monospace;
+    margin-top: 1rem;
 }
 
 .hidden {
