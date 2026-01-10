@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
+use slack_morphism::errors::SlackClientError;
 use slack_morphism::prelude::*;
 
 use crate::{parquet, week_to_date_range, AppError, OutputFormat, ProgressCallback, Result};
@@ -68,7 +69,7 @@ pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
         let response = session
             .conversations_list(&request)
             .await
-            .map_err(|e| AppError::SlackApi(e.to_string()))?;
+            .map_err(slack_error_to_app_error)?;
 
         for channel in response.channels {
             all_channels.push(ChannelInfo {
@@ -109,7 +110,7 @@ pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat)
         let response = session
             .users_list(&request)
             .await
-            .map_err(|e| AppError::SlackApi(e.to_string()))?;
+            .map_err(slack_error_to_app_error)?;
 
         all_users.extend(response.members);
 
@@ -162,7 +163,7 @@ pub async fn export_channels(token: &str, output_path: &Path, format: OutputForm
         let response = session
             .conversations_list(&request)
             .await
-            .map_err(|e| AppError::SlackApi(e.to_string()))?;
+            .map_err(slack_error_to_app_error)?;
 
         all_channels.extend(response.channels);
 
@@ -237,7 +238,7 @@ where
         let response = session
             .conversations_list(&request)
             .await
-            .map_err(|e| AppError::SlackApi(e.to_string()))?;
+            .map_err(slack_error_to_app_error)?;
 
         all_channels.extend(response.channels);
 
@@ -289,7 +290,7 @@ where
             let response = session
                 .conversations_history(&request)
                 .await
-                .map_err(|e| AppError::SlackApi(e.to_string()))?;
+                .map_err(slack_error_to_app_error)?;
 
             messages.extend(response.messages);
 
@@ -976,16 +977,18 @@ fn generate_weeks_in_range(
     weeks
 }
 
-/// Check if an error is a rate limit error and extract retry-after seconds
-fn is_rate_limit_error(error: &str) -> Option<u64> {
-    let error_lower = error.to_lowercase();
-    if error_lower.contains("rate") && error_lower.contains("limit") {
-        // Default to 60 seconds if we can't parse the retry-after
-        Some(60)
-    } else if error_lower.contains("ratelimited") {
-        Some(60)
-    } else {
-        None
+/// Convert SlackClientError to AppError, properly extracting rate limit retry-after
+fn slack_error_to_app_error(error: SlackClientError) -> AppError {
+    match error {
+        SlackClientError::RateLimitError(rate_err) => {
+            // Extract retry-after from header, default to 60 seconds
+            let retry_after_secs = rate_err
+                .retry_after
+                .map(|d| d.as_secs())
+                .unwrap_or(60);
+            AppError::SlackRateLimit { retry_after_secs }
+        }
+        other => AppError::SlackApi(other.to_string()),
     }
 }
 
@@ -1011,6 +1014,23 @@ where
     let weeks = generate_weeks_in_range(from_year, from_week, to_year, to_week);
     let total_weeks = weeks.len();
 
+    // Capture which parquet files exist BEFORE we start processing.
+    // This prevents skipping weeks that only have "overflow" messages from
+    // thread replies written during this run.
+    let pre_existing_files: HashSet<_> = weeks
+        .iter()
+        .filter_map(|(year, week)| {
+            let parquet_file = output_path
+                .join(format!("year={}/week={:02}", year, week))
+                .join("threads.parquet");
+            if parquet_file.exists() {
+                Some((*year, *week))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     let mut total_messages = 0usize;
     let mut weeks_processed = 0usize;
     let mut weeks_skipped = 0usize;
@@ -1025,11 +1045,9 @@ where
     for (idx, (year, week)) in weeks.iter().enumerate() {
         let week_label = format!("{}-W{:02}", year, week);
 
-        // Check if this week's data already exists
-        let week_dir = output_path.join(format!("year={}/week={:02}", year, week));
-        let parquet_file = week_dir.join("conversations.parquet");
-
-        if parquet_file.exists() {
+        // Only skip if file existed BEFORE this run started
+        // (not created by overflow messages during this run)
+        if pre_existing_files.contains(&(*year, *week)) {
             report_progress(
                 idx + 1,
                 total_weeks,
@@ -1070,30 +1088,27 @@ where
                     );
                     break;
                 }
-                Err(AppError::SlackApi(ref error_msg)) => {
-                    if let Some(wait_secs) = is_rate_limit_error(error_msg) {
-                        retries += 1;
-                        if retries > MAX_RETRIES {
-                            return Err(AppError::SlackApi(format!(
-                                "Rate limited {} times for {}, giving up",
-                                retries, week_label
-                            )));
-                        }
-
-                        rate_limit_waits += 1;
-                        report_progress(
-                            idx + 1,
-                            total_weeks,
-                            &format!(
-                                "{} - rate limited, waiting {}s (attempt {}/{})",
-                                week_label, wait_secs, retries, MAX_RETRIES
-                            ),
-                        );
-
-                        tokio::time::sleep(Duration::from_secs(wait_secs)).await;
-                        continue;
+                Err(AppError::SlackRateLimit { retry_after_secs }) => {
+                    retries += 1;
+                    if retries > MAX_RETRIES {
+                        return Err(AppError::SlackApi(format!(
+                            "Rate limited {} times for {}, giving up",
+                            retries, week_label
+                        )));
                     }
-                    return Err(AppError::SlackApi(error_msg.clone()));
+
+                    rate_limit_waits += 1;
+                    report_progress(
+                        idx + 1,
+                        total_weeks,
+                        &format!(
+                            "{} - rate limited, waiting {}s (attempt {}/{})",
+                            week_label, retry_after_secs, retries, MAX_RETRIES
+                        ),
+                    );
+
+                    tokio::time::sleep(Duration::from_secs(retry_after_secs)).await;
+                    continue;
                 }
                 Err(e) => return Err(e),
             }

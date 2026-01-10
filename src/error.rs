@@ -15,6 +15,9 @@ pub enum AppError {
     #[error("Slack API error: {0}")]
     SlackApi(String),
 
+    #[error("Slack rate limit error: retry after {retry_after_secs}s")]
+    SlackRateLimit { retry_after_secs: u64 },
+
     #[error("failed to read file at {path}: {source}")]
     ReadFile {
         path: String,
@@ -88,6 +91,12 @@ mod tests {
     fn test_slack_api_display() {
         let err = AppError::SlackApi("rate limited".to_string());
         assert_eq!(err.to_string(), "Slack API error: rate limited");
+    }
+
+    #[test]
+    fn test_slack_rate_limit_display() {
+        let err = AppError::SlackRateLimit { retry_after_secs: 30 };
+        assert_eq!(err.to_string(), "Slack rate limit error: retry after 30s");
     }
 
     #[test]
