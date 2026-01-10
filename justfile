@@ -1,5 +1,9 @@
 # Slack Utils justfile
 
+# Meilisearch defaults (override with: just --set ms_url "..." target)
+ms_url := "http://localhost:7700"
+ms_index := "slack"
+
 # Default recipe to list available targets
 default:
     @just --list
@@ -60,19 +64,19 @@ export-index-custom conversations users channels output:
     cargo run -- export-index --conversations {{conversations}} --users {{users}} --channels {{channels}} --output {{output}}
 
 # Import index to Meilisearch
-import-meilisearch url api_key index_name:
+import-meilisearch api_key url=ms_url index_name=ms_index:
     cargo run -- import-index-meilisearch --url {{url}} --api-key {{api_key}} --index-name {{index_name}}
 
 # Import index to Meilisearch with custom input path
-import-meilisearch-custom input url api_key index_name:
+import-meilisearch-custom input api_key url=ms_url index_name=ms_index:
     cargo run -- import-index-meilisearch --input {{input}} --url {{url}} --api-key {{api_key}} --index-name {{index_name}}
 
 # Import index to Meilisearch and clear existing data
-import-meilisearch-clear url api_key index_name:
+import-meilisearch-clear api_key url=ms_url index_name=ms_index:
     cargo run -- import-index-meilisearch --url {{url}} --api-key {{api_key}} --index-name {{index_name}} --clear
 
 # Query Meilisearch index
-query-meilisearch query url api_key index_name:
+query-meilisearch query api_key url=ms_url index_name=ms_index:
     cargo run -- query-meilisearch "{{query}}" --url {{url}} --api-key {{api_key}} --index-name {{index_name}}
 
 # Start Meilisearch server
