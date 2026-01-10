@@ -378,7 +378,7 @@ class DuckDBStaticApp {
 
                 // Try the standard filename pattern
                 const weekStr = String(week).padStart(2, '0');
-                const url = `/conversations/year=${year}/week=${weekStr}/conversations.parquet`;
+                const url = `/conversations/year=${year}/week=${weekStr}/threads.parquet`;
 
                 try {
                     const response = await fetch(url);

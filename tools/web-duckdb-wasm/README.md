@@ -183,12 +183,12 @@ The static file mode expects the following Hive partition structure:
 /conversations/
   year=2024/
     week=01/
-      conversations.parquet
+      threads.parquet
     week=02/
-      conversations.parquet
+      threads.parquet
   year=2025/
     week=01/
-      conversations.parquet
+      threads.parquet
 ```
 
 ## Requirements
