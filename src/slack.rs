@@ -17,16 +17,19 @@ use crate::{
 /// Maximum retries for rate-limited API calls
 const MAX_RATE_LIMIT_RETRIES: u32 = 5;
 
-/// Creates Slack client, token, and session variables.
-/// The session borrows from both client and token, so we use a macro to expand inline.
-macro_rules! create_slack_session {
-    ($token:expr) => {{
-        let client = SlackClient::new(
-            SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
-        );
-        let token_obj = SlackApiToken::new(SlackApiTokenValue($token.to_string()));
-        (client, token_obj)
-    }};
+/// Creates a Slack client and token for API calls.
+/// Returns a tuple that can be used to open a session: `client.open_session(&token)`
+fn create_slack_client(
+    token: &str,
+) -> (
+    SlackClient<SlackClientHyperHttpsConnector>,
+    SlackApiToken,
+) {
+    let client = SlackClient::new(
+        SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
+    );
+    let token_obj = SlackApiToken::new(SlackApiTokenValue(token.to_string()));
+    (client, token_obj)
 }
 
 /// Handle a Slack API result, retrying on rate limit errors.
@@ -98,7 +101,7 @@ pub fn load_channels_from_file(path: &Path) -> Result<Vec<ChannelInfo>> {
 }
 
 pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
-    let (client, token_obj) = create_slack_session!(token);
+    let (client, token_obj) = create_slack_client(token);
     let session = client.open_session(&token_obj);
 
     let mut all_channels = Vec::new();
@@ -134,7 +137,7 @@ pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
 }
 
 pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat) -> Result<usize> {
-    let (client, token_obj) = create_slack_session!(token);
+    let (client, token_obj) = create_slack_client(token);
     let session = client.open_session(&token_obj);
 
     let mut all_users = Vec::new();
@@ -180,7 +183,7 @@ pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat)
 }
 
 pub async fn export_channels(token: &str, output_path: &Path, format: OutputFormat) -> Result<usize> {
-    let (client, token_obj) = create_slack_session!(token);
+    let (client, token_obj) = create_slack_client(token);
     let session = client.open_session(&token_obj);
 
     let mut all_channels = Vec::new();
@@ -236,7 +239,7 @@ pub async fn export_conversations(
     format: OutputFormat,
 ) -> Result<usize> {
     let rate_limit_cb = callbacks.on_rate_limit;
-    let (client, token_obj) = create_slack_session!(token);
+    let (client, token_obj) = create_slack_client(token);
     let session = client.open_session(&token_obj);
 
     let oldest_ts = date_to_slack_ts(from_date);
