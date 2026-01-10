@@ -5,7 +5,10 @@ use crate::index::export_conversations_to_index;
 use crate::markdown::export_conversations_to_markdown;
 use crate::meilisearch::{import_index_to_meilisearch, query_meilisearch};
 use crate::slack;
-use crate::{default_from_date, default_to_date, load_token, parse_date, OutputFormat};
+use crate::{
+    current_iso_week, default_from_date, default_to_date, load_token, parse_date,
+    week_to_date_range, OutputFormat,
+};
 
 /// Derive output path based on format
 fn derive_output_path(base: &str, format: OutputFormat) -> String {
@@ -42,6 +45,60 @@ pub async fn run_export_conversations(
     println!(
         "Exporting conversations from {} to {} to {} (format: {})...",
         from_date, to_date, output_path, format
+    );
+
+    let progress_callback = |current: usize, total: usize, name: &str| {
+        if total > 0 {
+            println!("  [{}/{}] {}", current, total, name);
+        } else {
+            println!("  {}", name);
+        }
+    };
+
+    let count = slack::export_conversations(
+        &token,
+        from_date,
+        to_date,
+        Path::new(&output_path),
+        None,
+        Some(progress_callback),
+        format,
+    )
+    .await?;
+
+    println!(
+        "Export completed successfully! {} messages exported.",
+        count
+    );
+    Ok(())
+}
+
+pub async fn run_export_conversations_week(
+    year: Option<i32>,
+    week: Option<u32>,
+    output: &str,
+    format_str: &str,
+) -> Result<()> {
+    let token = load_token()?;
+    let format: OutputFormat = format_str.parse()?;
+
+    // Default to current ISO week
+    let (default_year, default_week) = current_iso_week();
+    let year = year.unwrap_or(default_year);
+    let week = week.unwrap_or(default_week);
+
+    // Convert year/week to date range
+    let (from_date, to_date) = week_to_date_range(year, week)?;
+
+    // For parquet, output is a directory; for json, output is a file
+    let output_path = match format {
+        OutputFormat::Json => derive_output_path(output, format),
+        OutputFormat::Parquet => output.to_string(),
+    };
+
+    println!(
+        "Exporting conversations for {}-W{:02} ({} to {}) to {} (format: {})...",
+        year, week, from_date, to_date, output_path, format
     );
 
     let progress_callback = |current: usize, total: usize, name: &str| {

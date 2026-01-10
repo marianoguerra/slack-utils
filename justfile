@@ -37,6 +37,14 @@ export-conversations output=conversations_path format=default_format:
 export-conversations-range from to output=conversations_path format=default_format:
     cargo run -- export-conversations --from {{from}} --to {{to}} --output {{output}} --format {{format}}
 
+# Export conversations for current work week (defaults to current year and week)
+export-conversations-week output=conversations_path format=default_format:
+    cargo run -- export-conversations-week --output {{output}} --format {{format}}
+
+# Export conversations for specific work week
+export-conversations-week-custom year week output=conversations_path format=default_format:
+    cargo run -- export-conversations-week --year {{year}} --week {{week}} --output {{output}} --format {{format}}
+
 # Export users
 export-users output=users_path format=default_format:
     cargo run -- export-users --output {{output}} --format {{format}}

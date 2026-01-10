@@ -11,10 +11,14 @@ use crate::meilisearch::import_index_to_meilisearch;
 use crate::settings::Settings;
 use crate::slack;
 use crate::ui::types::{
-    AsyncResult, ChannelSelection, ConvExportField, ExportTask, MenuItem, Screen,
+    AsyncResult, ChannelSelection, ConvExportField, ConvExportWeekField, ExportTask, MenuItem,
+    Screen,
 };
 use crate::widgets::TextInput;
-use crate::{default_from_date, default_to_date, parse_date, CHANNELS_FILE};
+use crate::{
+    current_iso_week, default_from_date, default_to_date, parse_date, week_to_date_range,
+    CHANNELS_FILE,
+};
 
 pub struct App {
     pub screen: Screen,
@@ -133,6 +137,37 @@ impl App {
                         )
                         .await?;
                         Ok::<_, AppError>(format!("Exported {} messages to {}", count, output_path))
+                    });
+                    let _ = tx.send(AsyncResult::ExportComplete(
+                        result.map_err(|e| e.to_string()),
+                    ));
+                }
+                ExportTask::ConversationsWeek {
+                    year,
+                    week,
+                    output_path,
+                    selected_channels,
+                    format,
+                } => {
+                    let progress_callback = |current: usize, total: usize, name: &str| {
+                        let _ = progress_tx.send((current, total, name.to_string()));
+                    };
+                    let result = rt.block_on(async {
+                        let (from, to) = week_to_date_range(year, week)?;
+                        let count = slack::export_conversations(
+                            &token,
+                            from,
+                            to,
+                            Path::new(&output_path),
+                            Some(&selected_channels),
+                            Some(progress_callback),
+                            format,
+                        )
+                        .await?;
+                        Ok::<_, AppError>(format!(
+                            "Exported {} messages for {}-W{:02} to {}",
+                            count, year, week, output_path
+                        ))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
                         result.map_err(|e| e.to_string()),
@@ -358,6 +393,32 @@ impl App {
             to_date: TextInput::new(default_to_date().format("%Y-%m-%d").to_string()),
             output_path: TextInput::new("./conversations.json".to_string()),
             active_field: ConvExportField::FromDate,
+            channel_selection,
+            loading_channels,
+        };
+    }
+
+    pub fn open_export_conversations_week(&mut self) {
+        let channels_result = slack::load_channels_from_file(Path::new(CHANNELS_FILE));
+
+        let (channel_selection, loading_channels) = match channels_result {
+            Ok(channels) => {
+                let saved_selection = Some(self.settings.selected_channels_set());
+                (
+                    Some(ChannelSelection::new(channels, saved_selection)),
+                    false,
+                )
+            }
+            Err(_) => (None, false),
+        };
+
+        let (year, week) = current_iso_week();
+
+        self.screen = Screen::ExportConversationsWeek {
+            year: TextInput::new(year.to_string()),
+            week: TextInput::new(week.to_string()),
+            output_path: TextInput::new("./conversations.json".to_string()),
+            active_field: ConvExportWeekField::Year,
             channel_selection,
             loading_channels,
         };

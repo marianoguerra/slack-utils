@@ -3,6 +3,7 @@ pub mod types;
 mod download_attachments;
 mod edit_conversations;
 mod export_conversations;
+mod export_conversations_week;
 mod export_emojis;
 mod export_index;
 mod export_simple;
@@ -52,6 +53,23 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             f,
             from_date,
             to_date,
+            output_path,
+            *active_field,
+            channel_selection.as_mut(),
+            *loading_channels,
+            chunks[1],
+        ),
+        Screen::ExportConversationsWeek {
+            year,
+            week,
+            output_path,
+            active_field,
+            channel_selection,
+            loading_channels,
+        } => export_conversations_week::render(
+            f,
+            year,
+            week,
             output_path,
             *active_field,
             channel_selection.as_mut(),

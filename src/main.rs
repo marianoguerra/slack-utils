@@ -10,6 +10,9 @@ async fn main() {
         Commands::ExportConversations { from, to, output, format } => {
             slack_utils::run_export_conversations_async(from, to, &output, &format).await
         }
+        Commands::ExportConversationsWeek { year, week, output, format } => {
+            slack_utils::run_export_conversations_week_async(year, week, &output, &format).await
+        }
         Commands::ExportUsers { output, format } => {
             slack_utils::run_export_users_async(&output, &format).await
         }

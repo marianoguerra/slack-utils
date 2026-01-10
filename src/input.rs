@@ -8,7 +8,7 @@ use crate::app::App;
 use crate::slack;
 use crate::settings::Settings;
 use crate::ui::types::{
-    AsyncResult, ConvExportField, DownloadAttachmentsField, EditConvPathField,
+    AsyncResult, ConvExportField, ConvExportWeekField, DownloadAttachmentsField, EditConvPathField,
     EditableChannelList, ExportEmojisField, ExportIndexField, ExportTask, ImportMeilisearchField,
     MarkdownExportField, MenuItem, QueryMeilisearchField, Screen,
 };
@@ -26,6 +26,9 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 match item {
                     MenuItem::ExportConversations => {
                         app.open_export_conversations();
+                    }
+                    MenuItem::ExportConversationsWeek => {
+                        app.open_export_conversations_week();
                     }
                     MenuItem::ExportUsers => {
                         app.screen = Screen::ExportUsers {
@@ -227,6 +230,110 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                         ConvExportField::ToDate => to_date,
                         ConvExportField::OutputPath => output_path,
                         ConvExportField::Channels => return,
+                    };
+                    field.handle_key(key);
+                }
+                _ => {}
+            }
+        }
+        Screen::ExportConversationsWeek {
+            year,
+            week,
+            output_path,
+            active_field,
+            channel_selection,
+            ..
+        } => {
+            match key.code {
+                KeyCode::Esc => app.screen = Screen::MainMenu,
+                KeyCode::Tab => {
+                    *active_field = match active_field {
+                        ConvExportWeekField::Year => ConvExportWeekField::Week,
+                        ConvExportWeekField::Week => ConvExportWeekField::OutputPath,
+                        ConvExportWeekField::OutputPath => ConvExportWeekField::Channels,
+                        ConvExportWeekField::Channels => ConvExportWeekField::Year,
+                    };
+                }
+                KeyCode::BackTab => {
+                    *active_field = match active_field {
+                        ConvExportWeekField::Year => ConvExportWeekField::Channels,
+                        ConvExportWeekField::Week => ConvExportWeekField::Year,
+                        ConvExportWeekField::OutputPath => ConvExportWeekField::Week,
+                        ConvExportWeekField::Channels => ConvExportWeekField::OutputPath,
+                    };
+                }
+                KeyCode::Char('a') if *active_field == ConvExportWeekField::Channels => {
+                    if let Some(sel) = channel_selection {
+                        sel.select_all();
+                    }
+                }
+                KeyCode::Char('n') if *active_field == ConvExportWeekField::Channels => {
+                    if let Some(sel) = channel_selection {
+                        sel.select_none();
+                    }
+                }
+                KeyCode::Char(' ') if *active_field == ConvExportWeekField::Channels => {
+                    if let Some(sel) = channel_selection {
+                        sel.toggle_current();
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k')
+                    if *active_field == ConvExportWeekField::Channels =>
+                {
+                    if let Some(sel) = channel_selection {
+                        sel.previous();
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j')
+                    if *active_field == ConvExportWeekField::Channels =>
+                {
+                    if let Some(sel) = channel_selection {
+                        sel.next();
+                    }
+                }
+                KeyCode::Enter => {
+                    let selected_channels = channel_selection
+                        .as_ref()
+                        .map(|s| s.selected.clone())
+                        .unwrap_or_default();
+
+                    if selected_channels.is_empty() {
+                        return;
+                    }
+
+                    let selected_ids = channel_selection
+                        .as_ref()
+                        .map(|s| s.selected_ids())
+                        .unwrap_or_default();
+
+                    let year_val: i32 = year.text().parse().unwrap_or(2024);
+                    let week_val: u32 = week.text().parse().unwrap_or(1);
+                    let output_path_str = output_path.text().to_string();
+
+                    app.save_selected_channels(selected_ids);
+
+                    let task = ExportTask::ConversationsWeek {
+                        year: year_val,
+                        week: week_val,
+                        output_path: output_path_str,
+                        selected_channels,
+                        format: OutputFormat::Json, // Default to JSON for TUI
+                    };
+                    app.screen = Screen::Loading {
+                        progress: None,
+                        message: format!(
+                            "Exporting conversations for {}-W{:02}...",
+                            year_val, week_val
+                        ),
+                    };
+                    app.start_task(task);
+                }
+                _ if *active_field != ConvExportWeekField::Channels => {
+                    let field = match active_field {
+                        ConvExportWeekField::Year => year,
+                        ConvExportWeekField::Week => week,
+                        ConvExportWeekField::OutputPath => output_path,
+                        ConvExportWeekField::Channels => return,
                     };
                     field.handle_key(key);
                 }

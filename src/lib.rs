@@ -1,7 +1,7 @@
 use std::io;
 use std::time::Duration;
 
-use chrono::{Local, NaiveDate};
+use chrono::{Datelike, Local, NaiveDate};
 use crossterm::{
     event::{self, Event, KeyEventKind},
     execute,
@@ -64,6 +64,7 @@ pub type ProgressCallback<'a> = Option<&'a dyn Fn(usize, usize, &str)>;
 pub use commands::run_download_attachments;
 pub use commands::run_export_channels as run_export_channels_async;
 pub use commands::run_export_conversations as run_export_conversations_async;
+pub use commands::run_export_conversations_week as run_export_conversations_week_async;
 pub use commands::run_export_emojis as run_export_emojis_async;
 pub use commands::run_export_index;
 pub use commands::run_export_markdown;
@@ -92,6 +93,24 @@ pub fn default_to_date() -> NaiveDate {
 /// Parse a date string in YYYY-MM-DD format
 pub fn parse_date(s: &str) -> Result<NaiveDate> {
     NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| AppError::InvalidDate(s.to_string()))
+}
+
+/// Get current ISO year and week number
+pub fn current_iso_week() -> (i32, u32) {
+    let today = Local::now().date_naive();
+    let iso_week = today.iso_week();
+    (iso_week.year(), iso_week.week())
+}
+
+/// Convert ISO year and week to date range (Monday to Sunday)
+pub fn week_to_date_range(year: i32, week: u32) -> Result<(NaiveDate, NaiveDate)> {
+    // ISO week 1 is the week containing the first Thursday of the year
+    // We use from_isoywd to get Monday of the given ISO week
+    let monday = NaiveDate::from_isoywd_opt(year, week, chrono::Weekday::Mon)
+        .ok_or_else(|| AppError::InvalidDate(format!("Invalid ISO week: {}-W{:02}", year, week)))?;
+    let sunday = NaiveDate::from_isoywd_opt(year, week, chrono::Weekday::Sun)
+        .ok_or_else(|| AppError::InvalidDate(format!("Invalid ISO week: {}-W{:02}", year, week)))?;
+    Ok((monday, sunday))
 }
 
 /// Run the terminal UI

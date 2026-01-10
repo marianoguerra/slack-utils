@@ -32,6 +32,25 @@ pub enum Commands {
         format: String,
     },
 
+    /// Export conversations for a specific ISO work week
+    ExportConversationsWeek {
+        /// ISO year (defaults to current year)
+        #[arg(short, long)]
+        year: Option<i32>,
+
+        /// ISO week number 1-53 (defaults to current week)
+        #[arg(short, long)]
+        week: Option<u32>,
+
+        /// Output path (without extension for json, directory path for parquet)
+        #[arg(short, long, default_value = "conversations")]
+        output: String,
+
+        /// Output format (json or parquet)
+        #[arg(long, default_value = "json")]
+        format: String,
+    },
+
     /// Export users
     ExportUsers {
         /// Output path (without extension)

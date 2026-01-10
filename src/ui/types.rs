@@ -15,6 +15,14 @@ pub enum ConvExportField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ConvExportWeekField {
+    Year,
+    Week,
+    OutputPath,
+    Channels,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EditConvPathField {
     Conversations,
     Users,
@@ -70,6 +78,7 @@ pub enum QueryMeilisearchField {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MenuItem {
     ExportConversations,
+    ExportConversationsWeek,
     ExportUsers,
     ExportChannels,
     EditConversations,
@@ -88,6 +97,7 @@ impl MenuItem {
             MenuItem::ExportUsers,
             MenuItem::ExportChannels,
             MenuItem::ExportConversations,
+            MenuItem::ExportConversationsWeek,
             MenuItem::DownloadAttachments,
             MenuItem::EditConversations,
             MenuItem::SelectedConversationsToMarkdown,
@@ -104,6 +114,7 @@ impl MenuItem {
             MenuItem::ExportUsers => "Fetch Users",
             MenuItem::ExportChannels => "Fetch Channels",
             MenuItem::ExportConversations => "Fetch Conversations in Date Range",
+            MenuItem::ExportConversationsWeek => "Fetch Conversations for Work Week",
             MenuItem::DownloadAttachments => "Download Attachments",
             MenuItem::EditConversations => "Edit Conversations",
             MenuItem::SelectedConversationsToMarkdown => "Export Conversations to Markdown",
@@ -637,6 +648,13 @@ pub enum ExportTask {
         selected_channels: HashSet<String>,
         format: OutputFormat,
     },
+    ConversationsWeek {
+        year: i32,
+        week: u32,
+        output_path: String,
+        selected_channels: HashSet<String>,
+        format: OutputFormat,
+    },
     Users {
         output_path: String,
         format: OutputFormat,
@@ -683,6 +701,14 @@ pub enum Screen {
         to_date: TextInput,
         output_path: TextInput,
         active_field: ConvExportField,
+        channel_selection: Option<ChannelSelection>,
+        loading_channels: bool,
+    },
+    ExportConversationsWeek {
+        year: TextInput,
+        week: TextInput,
+        output_path: TextInput,
+        active_field: ConvExportWeekField,
         channel_selection: Option<ChannelSelection>,
         loading_channels: bool,
     },
