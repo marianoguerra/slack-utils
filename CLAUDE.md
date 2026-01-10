@@ -72,6 +72,8 @@ Reuse core logic for the tui and cli.
 
 When implementing tasks that may take more than 1 second add a loading screen to the tui and progress to the cli, make sure the progress report functionality of the cli doesn't appear in the tui when reusing core logic.
 
+Prefer functions over macros unless macros are strictly necessary (e.g., for compile-time code generation that cannot be achieved with generics or closures).
+
 ## Error Handling
 
 Use `thiserror` for all error handling:

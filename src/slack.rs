@@ -32,40 +32,40 @@ fn create_slack_client(
     (client, token_obj)
 }
 
-/// Handle a Slack API result, retrying on rate limit errors.
-/// Returns Ok(response) on success, or Err on non-rate-limit errors or max retries exceeded.
-/// Optionally accepts a RateLimitCallback to report rate limit waits.
-macro_rules! with_rate_limit_retry {
-    ($api_call:expr) => {
-        with_rate_limit_retry!($api_call, None::<&dyn Fn(u64, u32, u32)>)
-    };
-    ($api_call:expr, $on_rate_limit:expr) => {{
-        let mut retries = 0u32;
-        let callback: RateLimitCallback = $on_rate_limit;
-        loop {
-            match $api_call.await {
-                Ok(response) => break Ok(response),
-                Err(e) => {
-                    let app_err = slack_error_to_app_error(e);
-                    if let AppError::SlackRateLimit { retry_after_secs } = app_err {
-                        retries += 1;
-                        if retries > MAX_RATE_LIMIT_RETRIES {
-                            break Err(AppError::SlackApi(format!(
-                                "Rate limited {} times, giving up",
-                                retries
-                            )));
-                        }
-                        if let Some(cb) = callback {
-                            cb(retry_after_secs, retries, MAX_RATE_LIMIT_RETRIES);
-                        }
-                        tokio::time::sleep(Duration::from_secs(retry_after_secs)).await;
-                        continue;
+/// Executes a Slack API call with automatic retry on rate limit errors.
+/// Takes a closure that returns a Future, allowing the call to be retried.
+async fn with_rate_limit_retry<F, Fut, T>(
+    api_call: F,
+    on_rate_limit: RateLimitCallback<'_>,
+) -> Result<T>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = std::result::Result<T, SlackClientError>>,
+{
+    let mut retries = 0u32;
+    loop {
+        match api_call().await {
+            Ok(response) => return Ok(response),
+            Err(e) => {
+                let app_err = slack_error_to_app_error(e);
+                if let AppError::SlackRateLimit { retry_after_secs } = app_err {
+                    retries += 1;
+                    if retries > MAX_RATE_LIMIT_RETRIES {
+                        return Err(AppError::SlackApi(format!(
+                            "Rate limited {} times, giving up",
+                            retries
+                        )));
                     }
-                    break Err(app_err);
+                    if let Some(cb) = on_rate_limit {
+                        cb(retry_after_secs, retries, MAX_RATE_LIMIT_RETRIES);
+                    }
+                    tokio::time::sleep(Duration::from_secs(retry_after_secs)).await;
+                    continue;
                 }
+                return Err(app_err);
             }
         }
-    }};
+    }
 }
 
 /// Type alias for loaded conversation data: (channel_id, channel_name, messages)
@@ -113,7 +113,7 @@ pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
             .with_types(vec![SlackConversationType::Public])
             .opt_cursor(cursor);
 
-        let response = with_rate_limit_retry!(session.conversations_list(&request))?;
+        let response = with_rate_limit_retry(|| session.conversations_list(&request), None).await?;
 
         for channel in response.channels {
             all_channels.push(ChannelInfo {
@@ -148,7 +148,7 @@ pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat)
             .with_limit(200)
             .opt_cursor(cursor);
 
-        let response = with_rate_limit_retry!(session.users_list(&request))?;
+        let response = with_rate_limit_retry(|| session.users_list(&request), None).await?;
 
         all_users.extend(response.members);
 
@@ -195,7 +195,7 @@ pub async fn export_channels(token: &str, output_path: &Path, format: OutputForm
             .with_types(vec![SlackConversationType::Public])
             .opt_cursor(cursor);
 
-        let response = with_rate_limit_retry!(session.conversations_list(&request))?;
+        let response = with_rate_limit_retry(|| session.conversations_list(&request), None).await?;
 
         all_channels.extend(response.channels);
 
@@ -257,7 +257,7 @@ pub async fn export_conversations(
             .opt_cursor(cursor);
 
         let response =
-            with_rate_limit_retry!(session.conversations_list(&request), rate_limit_cb)?;
+            with_rate_limit_retry(|| session.conversations_list(&request), rate_limit_cb).await?;
 
         all_channels.extend(response.channels);
 
@@ -307,7 +307,7 @@ pub async fn export_conversations(
                 .opt_cursor(msg_cursor);
 
             let response =
-                with_rate_limit_retry!(session.conversations_history(&request), rate_limit_cb)?;
+                with_rate_limit_retry(|| session.conversations_history(&request), rate_limit_cb).await?;
 
             messages.extend(response.messages);
 
@@ -359,10 +359,10 @@ pub async fn export_conversations(
                     .with_limit(200)
                     .opt_cursor(reply_cursor);
 
-                    let response = with_rate_limit_retry!(
-                        session.conversations_replies(&request),
-                        rate_limit_cb
-                    )?;
+                    let response = with_rate_limit_retry(
+                        || session.conversations_replies(&request),
+                        rate_limit_cb,
+                    ).await?;
 
                     // Skip the first message (parent) if it matches our message ts
                     let thread_replies: Vec<_> = response
