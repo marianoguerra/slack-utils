@@ -1,3 +1,18 @@
+// Bundle app.js on startup
+console.log('Bundling app.js...');
+const buildResult = await Bun.build({
+    entrypoints: ['./app.js'],
+    outdir: './dist',
+    format: 'esm',
+    target: 'browser',
+});
+
+if (!buildResult.success) {
+    console.error('Build failed:', buildResult.logs);
+    process.exit(1);
+}
+console.log('Bundle complete.');
+
 const server = Bun.serve({
     port: 3000,
     async fetch(req) {
@@ -7,6 +22,11 @@ const server = Bun.serve({
         // Default to index.html
         if (path === '/') {
             path = '/index.html';
+        }
+
+        // Serve bundled app.js from dist
+        if (path === '/app.js') {
+            path = '/dist/app.js';
         }
 
         // Serve static files
