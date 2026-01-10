@@ -2,6 +2,20 @@
 name = "slack-utils"
 version = "0.1.0"
 edition = "2024"
+default-run = "slack-utils"
+
+[[bin]]
+name = "slack-utils"
+path = "src/main.rs"
+
+[[bin]]
+name = "slack-utils-duckdb"
+path = "src/bin/slack-utils-duckdb.rs"
+required-features = ["duckdb"]
+
+[features]
+default = []
+duckdb = ["dep:duckdb"]
 
 [dependencies]
 arrow = "57"
@@ -12,6 +26,7 @@ meilisearch-sdk = "0.32.0"
 parquet = "57.1.0"
 ratatui = "0.30.0"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 slack-blocks-render = "0.4.2"
@@ -22,6 +37,9 @@ toml = "0.9.10"
 uuid = { version = "1.17", features = ["v4"] }
 walkdir = "2.5.0"
 webpage = "2.0.1"
+
+# Optional dependencies (feature-gated)
+duckdb = { version = "1.1", optional = true, features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3.24.0"

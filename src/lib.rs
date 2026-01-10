@@ -23,6 +23,9 @@ mod slack;
 mod ui;
 mod widgets;
 
+#[cfg(feature = "duckdb")]
+pub mod duckdb_query;
+
 /// Output format for export commands
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum OutputFormat {

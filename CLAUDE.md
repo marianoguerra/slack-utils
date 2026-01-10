@@ -8,6 +8,56 @@ A set of utilities to interact with slack archives
 
 - **ratatui** - Terminal UI framework for building rich terminal interfaces
 - **thiserror** - Derive macro for implementing std::error::Error
+- **duckdb** - Optional dependency for SQL queries on parquet exports (feature-gated)
+
+## slack-utils-duckdb Binary
+
+A separate binary for querying parquet exports using DuckDB. Built with the `duckdb` feature flag.
+
+### Building
+
+```bash
+cargo build --features duckdb --bin slack-utils-duckdb
+```
+
+### Usage
+
+```bash
+# Query with default parquet path (conversations/year=*/week=*/*.parquet)
+slack-utils-duckdb query "SELECT * FROM data LIMIT 10"
+
+# Specify a custom parquet path
+slack-utils-duckdb query "SELECT * FROM data" --parquet users.parquet
+slack-utils-duckdb query "SELECT * FROM data" --parquet channels.parquet
+```
+
+### Sample Queries
+
+```bash
+# Count messages per channel
+slack-utils-duckdb query "SELECT channel_name, COUNT(*) as msg_count FROM data GROUP BY channel_name ORDER BY msg_count DESC"
+
+# Find messages from a specific week (uses Hive partition filtering)
+slack-utils-duckdb query "SELECT * FROM data WHERE year = 2024 AND week = 42 LIMIT 20"
+
+# Search for messages containing a keyword
+slack-utils-duckdb query "SELECT channel_name, user, text FROM data WHERE text LIKE '%deploy%' LIMIT 50"
+
+# Get message counts by user
+slack-utils-duckdb query "SELECT user, COUNT(*) as msg_count FROM data GROUP BY user ORDER BY msg_count DESC LIMIT 20"
+
+# Count thread replies
+slack-utils-duckdb query "SELECT COUNT(*) as replies FROM data WHERE is_reply = true"
+
+# Messages per day for a date range
+slack-utils-duckdb query "SELECT date, COUNT(*) FROM data GROUP BY date ORDER BY date"
+
+# Query users parquet
+slack-utils-duckdb query "SELECT name, real_name, email FROM data WHERE is_bot = false" --parquet users.parquet
+
+# Query channels parquet
+slack-utils-duckdb query "SELECT name, num_members FROM data WHERE is_archived = false ORDER BY num_members DESC" --parquet channels.parquet
+```
 
 ## Developer Workflow
 

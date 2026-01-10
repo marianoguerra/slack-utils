@@ -84,3 +84,24 @@ query-meilisearch query api_key url=ms_url index_name=ms_index:
 # Start Meilisearch server
 start-meilisearch:
     ./meilisearch --master-key $MS_MASTER_KEY
+
+# DuckDB defaults
+conversations_parquet := "conversations/year=*/week=*/*.parquet"
+users_parquet := "users.parquet"
+channels_parquet := "channels.parquet"
+
+# Build the duckdb binary
+build-duckdb:
+    cargo build --features duckdb --bin slack-utils-duckdb
+
+# Query conversations parquet with DuckDB
+query-duckdb query parquet=conversations_parquet:
+    cargo run --features duckdb --bin slack-utils-duckdb -- query "{{query}}" --parquet "{{parquet}}"
+
+# Query users parquet with DuckDB
+query-duckdb-users query parquet=users_parquet:
+    cargo run --features duckdb --bin slack-utils-duckdb -- query "{{query}}" --parquet "{{parquet}}"
+
+# Query channels parquet with DuckDB
+query-duckdb-channels query parquet=channels_parquet:
+    cargo run --features duckdb --bin slack-utils-duckdb -- query "{{query}}" --parquet "{{parquet}}"
