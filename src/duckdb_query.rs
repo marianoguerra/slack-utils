@@ -102,11 +102,8 @@ impl QueryResult {
 pub fn execute_query(config: &QueryConfig) -> Result<QueryResult> {
     let conn = Connection::open_in_memory()?;
 
-    // Enable Hive partitioning for reading parquet files
-    conn.execute_batch(
-        "SET hive_partitioning = true;
-         SET enable_progress_bar = false;",
-    )?;
+    // Disable progress bar for cleaner output
+    conn.execute_batch("SET enable_progress_bar = false;")?;
 
     // Create a view from the parquet file(s)
     let create_view = format!(
@@ -121,25 +118,37 @@ pub fn execute_query(config: &QueryConfig) -> Result<QueryResult> {
         .prepare(&config.query)
         .map_err(|e| DuckDbError::QueryFailed(e.to_string()))?;
 
-    let column_count = stmt.column_count();
-    let columns: Vec<String> = (0..column_count)
-        .map(|i| stmt.column_name(i).map_or("?".to_string(), |s| s.to_string()))
-        .collect();
-
-    let rows_iter = stmt
-        .query_map([], |row| {
-            let mut values = Vec::with_capacity(column_count);
-            for i in 0..column_count {
-                let value: duckdb::types::Value = row.get(i)?;
-                values.push(format_value(&value));
-            }
-            Ok(values)
-        })
+    // Execute query and collect results
+    let mut result_rows = stmt
+        .query([])
         .map_err(|e| DuckDbError::QueryFailed(e.to_string()))?;
 
+    // Get column names after execution
+    let column_count = result_rows.as_ref().map(|s| s.column_count()).unwrap_or(0);
+    let columns: Vec<String> = (0..column_count)
+        .map(|i| {
+            result_rows
+                .as_ref()
+                .and_then(|s| s.column_name(i).ok())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "?".to_string())
+        })
+        .collect();
+
+    // Collect all rows
     let mut rows = Vec::new();
-    for row_result in rows_iter {
-        rows.push(row_result.map_err(|e| DuckDbError::QueryFailed(e.to_string()))?);
+    while let Some(row) = result_rows
+        .next()
+        .map_err(|e| DuckDbError::QueryFailed(e.to_string()))?
+    {
+        let mut values = Vec::with_capacity(column_count);
+        for i in 0..column_count {
+            let value: duckdb::types::Value = row
+                .get(i)
+                .map_err(|e| DuckDbError::QueryFailed(e.to_string()))?;
+            values.push(format_value(&value));
+        }
+        rows.push(values);
     }
 
     Ok(QueryResult { columns, rows })
