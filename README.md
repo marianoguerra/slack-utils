@@ -81,6 +81,28 @@ slack-utils export-conversations --from 2024-01-01 --to 2024-01-31
 slack-utils export-emojis
 ```
 
+**Archive conversations by week range (parquet format):**
+
+```bash
+# Archive a single week (defaults to current week if not specified)
+slack-utils archive-range --from-year 2024 --from-week 42
+
+# Archive multiple weeks in the same year
+slack-utils archive-range --from-year 2024 --from-week 1 --to-week 52
+
+# Archive across year boundary
+slack-utils archive-range --from-year 2024 --from-week 50 --to-year 2025 --to-week 10
+
+# Custom output directory
+slack-utils archive-range --from-year 2024 --from-week 1 --to-week 10 --output ./my-archive
+```
+
+Features:
+- Exports each week to `year=YYYY/week=WW/conversations.parquet`
+- Skips weeks that already have parquet files (incremental archiving)
+- Handles Slack API rate limits with automatic retry (up to 5 attempts, 60s wait)
+- Progress reporting shows current week, message counts, and rate limit waits
+
 **Process exported data:**
 
 ```bash
