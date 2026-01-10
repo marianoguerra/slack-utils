@@ -7,6 +7,7 @@ A set of utilities to interact with Slack archives.
 - Rust
 - Slack API token (set as `SLACK_TOKEN` environment variable)
 - Meilisearch (optional, for search features)
+- just (optional, for running tasks)
 
 ## Installation
 
@@ -20,6 +21,53 @@ cargo build --release
 
 ```bash
 slack-utils ui
+# or
+just ui
+```
+
+### Using just
+
+All targets have sensible defaults and can be run without arguments:
+
+```bash
+# Export data from Slack
+just export-users
+just export-channels
+just export-conversations
+just export-emojis
+
+# Process exported data
+just download-attachments
+just export-markdown
+just export-index
+
+# Meilisearch (api_key required)
+just import-meilisearch "YOUR_API_KEY"
+just import-meilisearch-clear "YOUR_API_KEY"
+just query-meilisearch "search term" "YOUR_API_KEY"
+```
+
+Override defaults by passing arguments:
+
+```bash
+# Custom output file
+just export-users custom-users.json
+
+# Custom date range
+just export-conversations-range 2024-01-01 2024-01-31
+
+# Custom paths for markdown export
+just export-markdown my-conversations.json users.json channels.json output.md
+
+# Custom Meilisearch settings
+just query-meilisearch "search" "API_KEY" "http://other:7700" "my-index"
+```
+
+Override defaults via variables:
+
+```bash
+just --set ms_url "http://other:7700" import-meilisearch "API_KEY"
+just --set conversations_file "my-data.json" export-index
 ```
 
 ### CLI Commands
@@ -27,45 +75,44 @@ slack-utils ui
 **Export data from Slack:**
 
 ```bash
-# Export users
 slack-utils export-users
-
-# Export channels
 slack-utils export-channels
-
-# Export conversations in a date range
 slack-utils export-conversations --from 2024-01-01 --to 2024-01-31
-
-# Export custom emojis
 slack-utils export-emojis
 ```
 
 **Process exported data:**
 
 ```bash
-# Download attachments from conversations
 slack-utils download-attachments --input conversations.json --output attachments/
-
-# Export conversations to markdown
 slack-utils export-markdown --conversations selected-conversations.json --output output.md
-
-# Export conversations to searchable index
 slack-utils export-index --conversations conversations.json --output conversation-index.json
 ```
 
 **Meilisearch integration:**
 
 ```bash
-# Import index to Meilisearch
 slack-utils import-index-meilisearch --url http://localhost:7700 --api-key KEY --index-name slack
-
-# Import and clear existing index
 slack-utils import-index-meilisearch --url http://localhost:7700 --api-key KEY --index-name slack --clear
-
-# Search the index
 slack-utils query-meilisearch "search term" --url http://localhost:7700 --api-key KEY --index-name slack
 ```
 
 ## Configuration
 
 Settings are saved to `settings.toml` in the current directory. Meilisearch connection details are persisted automatically after import.
+
+Default file paths used by justfile:
+
+| Variable | Default |
+|----------|---------|
+| `conversations_file` | `conversations.json` |
+| `selected_conversations_file` | `selected-conversations.json` |
+| `users_file` | `users.json` |
+| `channels_file` | `channels.json` |
+| `attachments_dir` | `attachments` |
+| `emojis_file` | `emojis.json` |
+| `emojis_dir` | `emojis` |
+| `index_file` | `conversation-index.json` |
+| `markdown_file` | `selected-conversations.md` |
+| `ms_url` | `http://localhost:7700` |
+| `ms_index` | `slack` |
