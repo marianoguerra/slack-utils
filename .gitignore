@@ -12,3 +12,8 @@
 /conversation-index.json
 /data.ms/
 /meilisearch
+
+# Parquet exports
+/channels.parquet
+/users.parquet
+/conversations/

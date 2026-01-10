@@ -105,3 +105,44 @@ query-duckdb-users query parquet=users_parquet:
 # Query channels parquet with DuckDB
 query-duckdb-channels query parquet=channels_parquet:
     cargo run --features duckdb --bin slack-utils-duckdb -- query "{{query}}" --parquet "{{parquet}}"
+
+# Run smoke tests for all CLI commands
+smoke-test:
+    #!/usr/bin/env bash
+    set -e
+    echo "=== Building all binaries ==="
+    cargo build --all-features
+
+    echo ""
+    echo "=== Running tests ==="
+    cargo test --all-features
+
+    echo ""
+    echo "=== Running clippy ==="
+    cargo clippy --all-features
+
+    echo ""
+    echo "=== Testing slack-utils --help ==="
+    cargo run -- --help
+
+    echo ""
+    echo "=== Testing slack-utils subcommand help ==="
+    cargo run -- ui --help
+    cargo run -- export-conversations --help
+    cargo run -- export-conversations-week --help
+    cargo run -- export-users --help
+    cargo run -- export-channels --help
+    cargo run -- download-attachments --help
+    cargo run -- export-markdown --help
+    cargo run -- export-emojis --help
+    cargo run -- export-index --help
+    cargo run -- import-index-meilisearch --help
+    cargo run -- query-meilisearch --help
+
+    echo ""
+    echo "=== Testing slack-utils-duckdb --help ==="
+    cargo run --features duckdb --bin slack-utils-duckdb -- --help
+    cargo run --features duckdb --bin slack-utils-duckdb -- query --help
+
+    echo ""
+    echo "=== All smoke tests passed ==="
