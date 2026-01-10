@@ -11,6 +11,37 @@ use slack_morphism::prelude::*;
 
 use crate::{parquet, week_to_date_range, AppError, OutputFormat, ProgressCallback, Result};
 
+/// Maximum retries for rate-limited API calls
+const MAX_RATE_LIMIT_RETRIES: u32 = 5;
+
+/// Handle a Slack API result, retrying on rate limit errors.
+/// Returns Ok(response) on success, or Err on non-rate-limit errors or max retries exceeded.
+macro_rules! with_rate_limit_retry {
+    ($api_call:expr) => {{
+        let mut retries = 0u32;
+        loop {
+            match $api_call.await {
+                Ok(response) => break Ok(response),
+                Err(e) => {
+                    let app_err = slack_error_to_app_error(e);
+                    if let AppError::SlackRateLimit { retry_after_secs } = app_err {
+                        retries += 1;
+                        if retries > MAX_RATE_LIMIT_RETRIES {
+                            break Err(AppError::SlackApi(format!(
+                                "Rate limited {} times, giving up",
+                                retries
+                            )));
+                        }
+                        tokio::time::sleep(Duration::from_secs(retry_after_secs)).await;
+                        continue;
+                    }
+                    break Err(app_err);
+                }
+            }
+        }
+    }};
+}
+
 /// Type alias for loaded conversation data: (channel_id, channel_name, messages)
 pub type LoadedConversations = (
     Vec<(String, String, Vec<serde_json::Value>)>,
@@ -66,10 +97,7 @@ pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
             .with_types(vec![SlackConversationType::Public])
             .opt_cursor(cursor);
 
-        let response = session
-            .conversations_list(&request)
-            .await
-            .map_err(slack_error_to_app_error)?;
+        let response = with_rate_limit_retry!(session.conversations_list(&request))?;
 
         for channel in response.channels {
             all_channels.push(ChannelInfo {
@@ -107,10 +135,7 @@ pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat)
             .with_limit(200)
             .opt_cursor(cursor);
 
-        let response = session
-            .users_list(&request)
-            .await
-            .map_err(slack_error_to_app_error)?;
+        let response = with_rate_limit_retry!(session.users_list(&request))?;
 
         all_users.extend(response.members);
 
@@ -160,10 +185,7 @@ pub async fn export_channels(token: &str, output_path: &Path, format: OutputForm
             .with_types(vec![SlackConversationType::Public])
             .opt_cursor(cursor);
 
-        let response = session
-            .conversations_list(&request)
-            .await
-            .map_err(slack_error_to_app_error)?;
+        let response = with_rate_limit_retry!(session.conversations_list(&request))?;
 
         all_channels.extend(response.channels);
 
@@ -235,10 +257,7 @@ where
             .with_types(vec![SlackConversationType::Public])
             .opt_cursor(cursor);
 
-        let response = session
-            .conversations_list(&request)
-            .await
-            .map_err(slack_error_to_app_error)?;
+        let response = with_rate_limit_retry!(session.conversations_list(&request))?;
 
         all_channels.extend(response.channels);
 
@@ -287,10 +306,7 @@ where
                 .with_limit(200)
                 .opt_cursor(msg_cursor);
 
-            let response = session
-                .conversations_history(&request)
-                .await
-                .map_err(slack_error_to_app_error)?;
+            let response = with_rate_limit_retry!(session.conversations_history(&request))?;
 
             messages.extend(response.messages);
 
@@ -342,32 +358,25 @@ where
                     .with_limit(200)
                     .opt_cursor(reply_cursor);
 
-                    match session.conversations_replies(&request).await {
-                        Ok(response) => {
-                            // Skip the first message (parent) if it matches our message ts
-                            let thread_replies: Vec<_> = response
-                                .messages
-                                .into_iter()
-                                .filter(|m| m.origin.ts != message.origin.ts)
-                                .collect();
-                            replies.extend(thread_replies);
+                    let response =
+                        with_rate_limit_retry!(session.conversations_replies(&request))?;
 
-                            match response.response_metadata {
-                                Some(meta)
-                                    if meta.next_cursor.is_some()
-                                        && !meta
-                                            .next_cursor
-                                            .as_ref()
-                                            .unwrap()
-                                            .0
-                                            .is_empty() =>
-                                {
-                                    reply_cursor = meta.next_cursor;
-                                }
-                                _ => break,
-                            }
+                    // Skip the first message (parent) if it matches our message ts
+                    let thread_replies: Vec<_> = response
+                        .messages
+                        .into_iter()
+                        .filter(|m| m.origin.ts != message.origin.ts)
+                        .collect();
+                    replies.extend(thread_replies);
+
+                    match response.response_metadata {
+                        Some(meta)
+                            if meta.next_cursor.is_some()
+                                && !meta.next_cursor.as_ref().unwrap().0.is_empty() =>
+                        {
+                            reply_cursor = meta.next_cursor;
                         }
-                        Err(_) => break,
+                        _ => break,
                     }
                 }
 
@@ -1034,7 +1043,8 @@ where
     let mut total_messages = 0usize;
     let mut weeks_processed = 0usize;
     let mut weeks_skipped = 0usize;
-    let mut rate_limit_waits = 0usize;
+    // Rate limits are now handled at individual API call level
+    let rate_limit_waits = 0usize;
 
     report_progress(
         0,
@@ -1062,57 +1072,25 @@ where
         // Convert week to date range
         let (from_date, to_date) = week_to_date_range(*year, *week)?;
 
-        // Try to export with retry on rate limit
-        let mut retries = 0;
-        const MAX_RETRIES: u32 = 5;
+        // Export conversations (rate limits handled at individual API call level)
+        let count = export_conversations(
+            token,
+            from_date,
+            to_date,
+            output_path,
+            None, // All channels
+            None::<fn(usize, usize, &str)>, // No sub-progress for individual weeks
+            OutputFormat::Parquet,
+        )
+        .await?;
 
-        loop {
-            match export_conversations(
-                token,
-                from_date,
-                to_date,
-                output_path,
-                None, // All channels
-                None::<fn(usize, usize, &str)>, // No sub-progress for individual weeks
-                OutputFormat::Parquet,
-            )
-            .await
-            {
-                Ok(count) => {
-                    total_messages += count;
-                    weeks_processed += 1;
-                    report_progress(
-                        idx + 1,
-                        total_weeks,
-                        &format!("{} - {} messages", week_label, count),
-                    );
-                    break;
-                }
-                Err(AppError::SlackRateLimit { retry_after_secs }) => {
-                    retries += 1;
-                    if retries > MAX_RETRIES {
-                        return Err(AppError::SlackApi(format!(
-                            "Rate limited {} times for {}, giving up",
-                            retries, week_label
-                        )));
-                    }
-
-                    rate_limit_waits += 1;
-                    report_progress(
-                        idx + 1,
-                        total_weeks,
-                        &format!(
-                            "{} - rate limited, waiting {}s (attempt {}/{})",
-                            week_label, retry_after_secs, retries, MAX_RETRIES
-                        ),
-                    );
-
-                    tokio::time::sleep(Duration::from_secs(retry_after_secs)).await;
-                    continue;
-                }
-                Err(e) => return Err(e),
-            }
-        }
+        total_messages += count;
+        weeks_processed += 1;
+        report_progress(
+            idx + 1,
+            total_weeks,
+            &format!("{} - {} messages", week_label, count),
+        );
     }
 
     Ok(ArchiveRangeResult {
