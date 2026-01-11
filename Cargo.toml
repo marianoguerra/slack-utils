@@ -7,6 +7,7 @@ default-run = "slack-utils"
 [[bin]]
 name = "slack-utils"
 path = "src/main.rs"
+required-features = ["tui"]
 
 [[bin]]
 name = "slack-utils-duckdb"
@@ -20,6 +21,7 @@ required-features = ["server"]
 
 [features]
 default = []
+tui = ["dep:ratatui", "dep:crossterm"]
 duckdb = ["dep:duckdb"]
 server = ["dep:axum", "dep:axum-extra", "dep:tower-http", "dep:tokio-util", "dep:tower"]
 
@@ -27,10 +29,8 @@ server = ["dep:axum", "dep:axum-extra", "dep:tower-http", "dep:tokio-util", "dep
 arrow = "57"
 chrono = "0.4.42"
 clap = { version = "4.5.54", features = ["derive"] }
-crossterm = "0.29"
 meilisearch-sdk = "0.32.0"
 parquet = "57.1.0"
-ratatui = "0.30.0"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -45,6 +45,8 @@ walkdir = "2.5.0"
 webpage = "2.0.1"
 
 # Optional dependencies (feature-gated)
+ratatui = { version = "0.30.0", optional = true }
+crossterm = { version = "0.29", optional = true }
 duckdb = { version = "1.1", optional = true, features = ["bundled"] }
 axum = { version = "0.8.8", optional = true, features = ["http2"] }
 axum-extra = { version = "0.12.5", optional = true, features = ["typed-header"] }

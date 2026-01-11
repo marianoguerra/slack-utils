@@ -208,7 +208,7 @@ dist:
     mkdir -p dist
 
     echo "Building slack-utils (release)..."
-    cargo build --release
+    cargo build --release --features tui
     cp target/release/slack-utils dist/
 
     echo "Building slack-utils-duckdb (release)..."
