@@ -171,7 +171,7 @@ pub enum Commands {
         api_key: String,
 
         /// Meilisearch index name
-        #[arg(short = 'n', long, default_value = "conversations")]
+        #[arg(short = 'n', long, default_value = "slack")]
         index_name: String,
 
         /// Clear index before import (uses swap operation)
@@ -193,11 +193,11 @@ pub enum Commands {
         api_key: String,
 
         /// Meilisearch index name
-        #[arg(short = 'n', long, default_value = "conversations")]
+        #[arg(short = 'n', long, default_value = "slack")]
         index_name: String,
 
         /// Maximum number of results
-        #[arg(short, long, default_value = "10")]
+        #[arg(short, long, default_value = "20")]
         limit: usize,
     },
 }
