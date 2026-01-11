@@ -29,7 +29,7 @@ export class SlackArchiveClient {
 
   constructor(options: SlackArchiveClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.fetchFn = options.fetch ?? fetch;
+    this.fetchFn = options.fetch ?? ((...args) => fetch(...args));
   }
 
   /**

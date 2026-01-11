@@ -104,14 +104,11 @@
   </div>
 
   <div class="config">
-    <label for="serverUrl">Server URL:</label>
-    <input type="text" id="serverUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
-
     <label for="dateFrom">Date Range - From:</label>
-    <input type="date" id="dateFrom" value="2024-01-01">
+    <input type="date" id="dateFrom">
 
     <label for="dateTo">Date Range - To:</label>
-    <input type="date" id="dateTo" value="2024-12-31">
+    <input type="date" id="dateTo">
 
     <button id="runTests" onclick="runSmokeTests()">Run Smoke Tests</button>
   </div>
@@ -126,8 +123,17 @@
   <script type="module">
     import { SlackArchiveClient, SlackArchiveError } from '../dist/index.js';
 
+    // Set default date range: 4 weeks ago to today
+    function formatDate(date) {
+      return date.toISOString().split('T')[0];
+    }
+    const today = new Date();
+    const fourWeeksAgo = new Date(today.getTime() - 28 * 24 * 60 * 60 * 1000);
+    document.getElementById('dateFrom').value = formatDate(fourWeeksAgo);
+    document.getElementById('dateTo').value = formatDate(today);
+
     window.runSmokeTests = async function() {
-      const serverUrl = document.getElementById('serverUrl').value;
+      const serverUrl = window.location.origin;
       const dateFrom = document.getElementById('dateFrom').value;
       const dateTo = document.getElementById('dateTo').value;
       const resultsDiv = document.getElementById('results');
