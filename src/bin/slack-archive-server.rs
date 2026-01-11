@@ -652,4 +652,271 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
+
+    // ===========================================
+    // Path Traversal Security Tests
+    // ===========================================
+
+    /// Verifies that path traversal via URL-encoded sequences in year parameter
+    /// results in a 400 Bad Request (invalid i32 parsing), not file access.
+    #[tokio::test]
+    async fn test_path_traversal_year_url_encoded_dots() {
+        let (_dir, app) = create_test_app();
+
+        // %2e%2e = ".." URL-encoded
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads?year=%2e%2e&week=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should fail to parse as i32, returning 400
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Verifies that path traversal via URL-encoded sequences in week parameter
+    /// results in a 400 Bad Request (invalid u32 parsing), not file access.
+    #[tokio::test]
+    async fn test_path_traversal_week_url_encoded_dots() {
+        let (_dir, app) = create_test_app();
+
+        // %2e%2e%2f = "../" URL-encoded
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads?year=2024&week=%2e%2e%2f")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should fail to parse as u32, returning 400
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Verifies that path traversal attempts in the 'from' date parameter
+    /// are rejected by date validation.
+    #[tokio::test]
+    async fn test_path_traversal_date_from_with_slashes() {
+        let (_dir, app) = create_test_app();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads-in-range?from=../../../etc/passwd&to=2024-01-21")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Verifies that path traversal attempts in the 'to' date parameter
+    /// are rejected by date validation.
+    #[tokio::test]
+    async fn test_path_traversal_date_to_with_slashes() {
+        let (_dir, app) = create_test_app();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads-in-range?from=2024-01-15&to=../../../etc/passwd")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Verifies that URL-encoded path traversal in date parameters is rejected.
+    #[tokio::test]
+    async fn test_path_traversal_date_url_encoded() {
+        let (_dir, app) = create_test_app();
+
+        // %2f = "/" URL-encoded
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads-in-range?from=2024%2f..%2f..&to=2024-01-21")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Verifies that even if a file exists at a traversal path outside the archive,
+    /// it cannot be accessed. Creates a sensitive file outside base_path and verifies
+    /// that path construction doesn't allow escape.
+    #[tokio::test]
+    async fn test_path_traversal_cannot_escape_base_path() {
+        let dir = tempdir().unwrap();
+
+        // Create a "sensitive" file in the parent directory (outside archive base)
+        let parent = dir.path().parent().unwrap();
+        let sensitive_file = parent.join("sensitive.txt");
+        // Only create if we have permission (test environments may vary)
+        let _ = fs::write(&sensitive_file, b"sensitive data");
+
+        // Create archive in subdirectory
+        let archive_path = dir.path().join("archive");
+        fs::create_dir_all(&archive_path).unwrap();
+
+        let archive = Arc::new(ArchiveService::new(&archive_path));
+        let state = AppState {
+            archive,
+            meilisearch: None,
+        };
+        let app = build_router(state);
+
+        // Even with negative year (attempting to traverse up), the path construction
+        // uses format!("year={}", year) which produces "year=-1", not a traversal
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads?year=-1&week=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should be NOT_FOUND (no such partition), not a security breach
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        // Clean up sensitive file if we created it
+        let _ = fs::remove_file(&sensitive_file);
+    }
+
+    /// Verifies that the ArchiveService path methods produce safe paths
+    /// even with edge case inputs. Tests the underlying path construction directly.
+    #[tokio::test]
+    async fn test_archive_service_path_construction_safety() {
+        let dir = tempdir().unwrap();
+        let archive = ArchiveService::new(dir.path());
+
+        // Test that negative years don't cause traversal
+        let path = archive.threads_path(-2024, 1);
+        assert!(path.starts_with(dir.path()));
+        assert!(path.to_string_lossy().contains("year=-2024"));
+
+        // Test that the path always ends with threads.parquet
+        assert!(path.to_string_lossy().ends_with("threads.parquet"));
+
+        // Test maximum valid week
+        let path = archive.threads_path(2024, 53);
+        assert!(path.starts_with(dir.path()));
+        assert!(path.to_string_lossy().contains("week=53"));
+    }
+
+    /// Verifies that double-encoded path traversal attempts are handled safely.
+    #[tokio::test]
+    async fn test_path_traversal_double_encoded() {
+        let (_dir, app) = create_test_app();
+
+        // %252e%252e = "%2e%2e" (double-encoded "..")
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads?year=%252e%252e&week=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should fail to parse as i32
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Verifies that null byte injection attempts are rejected.
+    #[tokio::test]
+    async fn test_path_traversal_null_byte() {
+        let (_dir, app) = create_test_app();
+
+        // %00 = null byte
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads?year=2024%00&week=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should fail to parse as i32
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Verifies that backslash-based traversal (Windows-style) is rejected.
+    #[tokio::test]
+    async fn test_path_traversal_backslash() {
+        let (_dir, app) = create_test_app();
+
+        // %5c = backslash
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads?year=..%5c..%5c&week=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should fail to parse as i32
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// Verifies that extremely large year values don't cause issues.
+    #[tokio::test]
+    async fn test_path_traversal_large_year() {
+        let (_dir, app) = create_test_app();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/archive/threads?year=999999999&week=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Should be NOT_FOUND (no such partition), but importantly not a server error
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    /// Verifies that the search endpoint doesn't allow path traversal in query param.
+    #[tokio::test]
+    async fn test_path_traversal_search_query() {
+        let (_dir, app) = create_test_app();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/archive/search?query=../../../etc/passwd")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Search is not configured, so SERVICE_UNAVAILABLE
+        // The important thing is it doesn't expose files
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
 }
