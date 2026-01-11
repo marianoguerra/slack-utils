@@ -1,140 +1,289 @@
 # slack-utils
 
-A set of utilities to interact with Slack archives.
+Command-line utilities for exporting, archiving, and querying Slack data.
 
 ## Requirements
 
-- Rust
-- Slack API token (set as `SLACK_TOKEN` environment variable)
-- Meilisearch (optional, for search features)
+- Rust (edition 2024)
+- Slack API token (environment variable `SLACK_TOKEN`)
 - just (optional, for running tasks)
+- Meilisearch (optional, for full-text search)
 
-## Installation
+## Building
+
+The project has three binaries, each behind a feature flag.
 
 ```bash
-cargo build --release
+# Main CLI with TUI
+cargo build --features tui
+
+# DuckDB query tool
+cargo build --features duckdb --bin slack-utils-duckdb
+
+# HTTP server
+cargo build --features server --bin slack-archive-server
+
+# Build all for release
+just dist
 ```
 
-## Usage
+## Binaries
 
-### Interactive TUI
+### slack-utils
+
+Main CLI tool for exporting data from Slack.
+
+**Export Commands**
 
 ```bash
-slack-utils ui
-# or
-just ui
+# Export users
+slack-utils export-users --output users --format json
+slack-utils export-users --output users --format parquet
+
+# Export channels
+slack-utils export-channels --output channels --format json
+
+# Export conversations by date range
+slack-utils export-conversations --from 2024-01-01 --to 2024-01-31 --output conversations --format json
+
+# Export conversations for a specific ISO week
+slack-utils export-conversations-week --year 2024 --week 42 --output conversations
+
+# Export custom emojis
+slack-utils export-emojis --output emojis.json --folder emojis/
 ```
 
-### Using just
+**Archive Commands**
 
-All targets have sensible defaults and can be run without arguments:
-
-```bash
-# Export data from Slack
-just export-users
-just export-channels
-just export-conversations
-just export-emojis
-
-# Process exported data
-just download-attachments
-just export-markdown
-just export-index
-
-# Meilisearch (api_key required)
-just import-meilisearch "YOUR_API_KEY"
-just import-meilisearch-clear "YOUR_API_KEY"
-just query-meilisearch "search term" "YOUR_API_KEY"
-```
-
-Override defaults by passing arguments:
+Archives store conversations as parquet files in Hive-partitioned directories (`year=YYYY/week=WW/threads.parquet`). Existing weeks are skipped.
 
 ```bash
-# Custom output file
-just export-users custom-users.json
-
-# Custom date range
-just export-conversations-range 2024-01-01 2024-01-31
-
-# Custom paths for markdown export
-just export-markdown my-conversations.json users.json channels.json output.md
-
-# Custom Meilisearch settings
-just query-meilisearch "search" "API_KEY" "http://other:7700" "my-index"
-```
-
-Override defaults via variables:
-
-```bash
-just --set ms_url "http://other:7700" import-meilisearch "API_KEY"
-just --set conversations_file "my-data.json" export-index
-```
-
-### CLI Commands
-
-**Export data from Slack:**
-
-```bash
-slack-utils export-users
-slack-utils export-channels
-slack-utils export-conversations --from 2024-01-01 --to 2024-01-31
-slack-utils export-emojis
-```
-
-**Archive conversations by week range (parquet format):**
-
-```bash
-# Archive a single week (defaults to current week if not specified)
+# Archive a single week
 slack-utils archive-range --from-year 2024 --from-week 42
 
-# Archive multiple weeks in the same year
+# Archive a range of weeks
 slack-utils archive-range --from-year 2024 --from-week 1 --to-week 52
 
 # Archive across year boundary
-slack-utils archive-range --from-year 2024 --from-week 50 --to-year 2025 --to-week 10
-
-# Custom output directory
-slack-utils archive-range --from-year 2024 --from-week 1 --to-week 10 --output ./my-archive
+slack-utils archive-range --from-year 2024 --from-week 50 --to-year 2025 --to-week 10 --output ./archive
 ```
 
-Features:
-- Exports each week to `year=YYYY/week=WW/threads.parquet`
-- Skips weeks that already have parquet files (incremental archiving)
-- Handles Slack API rate limits with automatic retry (up to 5 attempts, uses Retry-After header)
-- Progress reporting shows current week, message counts, and rate limit waits
-
-**Process exported data:**
+**Processing Commands**
 
 ```bash
+# Download attachments from exported conversations
 slack-utils download-attachments --input conversations.json --output attachments/
-slack-utils export-markdown --conversations selected-conversations.json --output output.md
-slack-utils export-index --conversations conversations.json --output conversation-index.json
+
+# Convert conversations to markdown
+slack-utils export-markdown --conversations selected-conversations.json --users users.json --channels channels.json --output output.md
+
+# Create searchable index
+slack-utils export-index --conversations conversations.json --users users.json --channels channels.json --output index.json
 ```
 
-**Meilisearch integration:**
+**Meilisearch Commands**
 
 ```bash
-slack-utils import-index-meilisearch --url http://localhost:7700 --api-key KEY --index-name slack
-slack-utils import-index-meilisearch --url http://localhost:7700 --api-key KEY --index-name slack --clear
-slack-utils query-meilisearch "search term" --url http://localhost:7700 --api-key KEY --index-name slack
+# Import index to Meilisearch
+slack-utils import-index-meilisearch --input index.json --url http://localhost:7700 --api-key KEY --index-name slack
+
+# Import with clear (atomic swap)
+slack-utils import-index-meilisearch --input index.json --url http://localhost:7700 --api-key KEY --index-name slack --clear
+
+# Query
+slack-utils query-meilisearch "search term" --url http://localhost:7700 --api-key KEY --index-name slack --limit 20
 ```
 
-## Configuration
+**Interactive TUI**
 
-Settings are saved to `settings.toml` in the current directory. Meilisearch connection details are persisted automatically after import.
+```bash
+slack-utils ui
+```
 
-Default file paths used by justfile:
+### slack-utils-duckdb
+
+Query parquet exports using DuckDB. Data is exposed as a table named `data`.
+
+```bash
+# Query conversation threads (default path)
+slack-utils-duckdb query "SELECT * FROM data LIMIT 10"
+
+# Query with custom parquet path
+slack-utils-duckdb query "SELECT * FROM data" --parquet users.parquet
+slack-utils-duckdb query "SELECT * FROM data" --parquet channels.parquet
+
+# Messages per channel
+slack-utils-duckdb query "SELECT channel_name, COUNT(*) as msg_count FROM data GROUP BY channel_name ORDER BY msg_count DESC"
+
+# Filter by Hive partition
+slack-utils-duckdb query "SELECT * FROM data WHERE year = 2024 AND week = 42 LIMIT 20"
+
+# Search message content
+slack-utils-duckdb query "SELECT channel_name, user, text FROM data WHERE text LIKE '%deploy%'"
+
+# Thread reply counts
+slack-utils-duckdb query "SELECT channel_name, thread_ts, COUNT(*) as replies FROM data WHERE is_reply GROUP BY channel_name, thread_ts ORDER BY replies DESC LIMIT 10"
+```
+
+Default parquet path: `conversations/year=*/week=*/*.parquet`
+
+### slack-archive-server
+
+HTTP server for serving parquet files.
+
+**Configuration**
+
+Create a TOML config file. See `resources/sample-server-config.toml` for documentation.
+
+```toml
+[server]
+host = "127.0.0.1"
+port = 8080
+# static_assets = "./static"
+
+[slack-archive]
+base_path = "./archive"
+
+# Optional: enable search
+# [meilisearch]
+# url = "http://localhost:7700"
+# api-key = "your-api-key"
+# index-name = "slack"
+```
+
+**Running**
+
+```bash
+slack-archive-server serve config.toml
+```
+
+**API Endpoints**
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/archive/users` | Returns `users.parquet` |
+| GET | `/archive/channels` | Returns `channels.parquet` |
+| GET | `/archive/threads-in-range?from=YYYY-MM-DD&to=YYYY-MM-DD` | Lists available year/week partitions |
+| GET | `/archive/threads?year=YYYY&week=WW` | Returns `threads.parquet` for a week |
+| POST | `/archive/search?query=<text>&limit=<n>` | Search via Meilisearch |
+
+**Expected Directory Structure**
+
+```
+archive/
+├── users.parquet
+├── channels.parquet
+└── conversations/
+    └── year=YYYY/
+        └── week=WW/
+            └── threads.parquet
+```
+
+## Justfile Targets
+
+Run `just` to list all targets.
+
+**Export from Slack**
+
+| Target | Description |
+|--------|-------------|
+| `just export-users [output] [format]` | Export users (default: users, json) |
+| `just export-channels [output] [format]` | Export channels (default: channels, json) |
+| `just export-conversations [output] [format]` | Export last 7 days |
+| `just export-conversations-range <from> <to> [output] [format]` | Export date range |
+| `just export-conversations-week [output] [format]` | Export current ISO week |
+| `just export-conversations-week-custom <year> <week> [output] [format]` | Export specific week |
+| `just export-emojis [output] [folder]` | Export custom emojis |
+
+**Archive**
+
+| Target | Description |
+|--------|-------------|
+| `just archive-last-4-weeks [output]` | Archive last 4 weeks as parquet |
+| `just archive-range <from_year> <from_week> <to_year> <to_week> [output]` | Archive week range |
+
+**Processing**
+
+| Target | Description |
+|--------|-------------|
+| `just download-attachments [input] [output]` | Download attachments |
+| `just export-markdown [conversations] [users] [channels] [output]` | Convert to markdown |
+| `just export-index [conversations] [users] [channels] [output]` | Create search index |
+
+**Meilisearch**
+
+| Target | Description |
+|--------|-------------|
+| `just import-meilisearch <api_key> [input] [url] [index_name]` | Import index |
+| `just import-meilisearch-clear <api_key> [input] [url] [index_name]` | Import with clear |
+| `just query-meilisearch <query> <api_key> [url] [index_name]` | Search |
+| `just start-meilisearch` | Start server (requires `$MS_MASTER_KEY`) |
+
+**DuckDB**
+
+| Target | Description |
+|--------|-------------|
+| `just build-duckdb` | Build DuckDB binary |
+| `just query-duckdb <query> [parquet]` | Query conversations |
+| `just query-duckdb-users <query> [parquet]` | Query users.parquet |
+| `just query-duckdb-channels <query> [parquet]` | Query channels.parquet |
+| `just run-duckdb-sample-queries` | Run example queries |
+
+**Server**
+
+| Target | Description |
+|--------|-------------|
+| `just build-server` | Build server binary |
+| `just run-server [config]` | Run server |
+| `just server-smoke-test` | Run server smoke tests |
+
+**Other**
+
+| Target | Description |
+|--------|-------------|
+| `just ui` | Launch interactive TUI |
+| `just smoke-test` | Run CLI smoke tests |
+| `just dist` | Build release binaries |
+
+## Justfile Defaults
+
+Variables can be overridden with `--set`:
+
+```bash
+just --set ms_url "http://other:7700" import-meilisearch "API_KEY"
+```
 
 | Variable | Default |
 |----------|---------|
-| `conversations_file` | `conversations.json` |
-| `selected_conversations_file` | `selected-conversations.json` |
-| `users_file` | `users.json` |
-| `channels_file` | `channels.json` |
+| `conversations_path` | `conversations` |
+| `users_path` | `users` |
+| `channels_path` | `channels` |
 | `attachments_dir` | `attachments` |
 | `emojis_file` | `emojis.json` |
 | `emojis_dir` | `emojis` |
 | `index_file` | `conversation-index.json` |
 | `markdown_file` | `selected-conversations.md` |
+| `default_format` | `json` |
 | `ms_url` | `http://localhost:7700` |
 | `ms_index` | `slack` |
+| `conversations_parquet` | `conversations/year=*/week=*/*.parquet` |
+| `users_parquet` | `users.parquet` |
+| `channels_parquet` | `channels.parquet` |
+
+## Output Formats
+
+- **json**: Single file with all data
+- **parquet**: Binary columnar format, efficient for queries
+
+For parquet exports of conversations, files are organized with Hive partitioning:
+
+```
+conversations/
+└── year=2024/
+    └── week=42/
+        └── threads.parquet
+```
+
+## Rate Limiting
+
+Slack API operations handle rate limits automatically. The CLI displays wait times when rate limited. Operations retry up to 5 times using the `Retry-After` header.
