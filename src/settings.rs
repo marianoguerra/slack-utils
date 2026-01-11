@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -55,8 +54,11 @@ impl Settings {
         })?;
         Ok(())
     }
+}
 
-    pub fn selected_channels_set(&self) -> HashSet<String> {
+#[cfg(feature = "tui")]
+impl Settings {
+    pub fn selected_channels_set(&self) -> std::collections::HashSet<String> {
         self.ui.selected_channels.iter().cloned().collect()
     }
 
@@ -183,6 +185,7 @@ url = "http://example.com:7700"
     }
 
     #[test]
+    #[cfg(feature = "tui")]
     fn test_selected_channels_set_empty() {
         let settings = Settings::default();
         let set = settings.selected_channels_set();
@@ -191,6 +194,7 @@ url = "http://example.com:7700"
     }
 
     #[test]
+    #[cfg(feature = "tui")]
     fn test_selected_channels_set_with_values() {
         let mut settings = Settings::default();
         settings.ui.selected_channels = vec![
@@ -208,6 +212,7 @@ url = "http://example.com:7700"
     }
 
     #[test]
+    #[cfg(feature = "tui")]
     fn test_selected_channels_set_deduplicates() {
         let mut settings = Settings::default();
         settings.ui.selected_channels = vec![
@@ -224,6 +229,7 @@ url = "http://example.com:7700"
     }
 
     #[test]
+    #[cfg(feature = "tui")]
     fn test_set_selected_channels() {
         let mut settings = Settings::default();
         assert!(settings.ui.selected_channels.is_empty());
@@ -236,6 +242,7 @@ url = "http://example.com:7700"
     }
 
     #[test]
+    #[cfg(feature = "tui")]
     fn test_set_selected_channels_replaces() {
         let mut settings = Settings::default();
         settings.ui.selected_channels = vec!["old1".to_string(), "old2".to_string()];

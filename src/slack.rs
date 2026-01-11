@@ -5,7 +5,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use chrono::{Datelike, NaiveDate};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use slack_morphism::errors::SlackClientError;
 use slack_morphism::prelude::*;
 
@@ -66,74 +66,6 @@ where
             }
         }
     }
-}
-
-/// Type alias for loaded conversation data: (channel_id, channel_name, messages)
-pub type LoadedConversations = (
-    Vec<(String, String, Vec<serde_json::Value>)>,
-    serde_json::Value,
-    serde_json::Value,
-);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelInfo {
-    pub id: String,
-    pub name: String,
-}
-
-pub fn load_channels_from_file(path: &Path) -> Result<Vec<ChannelInfo>> {
-    let channels: Vec<serde_json::Value> = crate::load_json_file(&path.display().to_string())?;
-
-    let channel_infos = channels
-        .into_iter()
-        .filter_map(|c| {
-            let id = c.get("id")?.as_str()?.to_string();
-            let name = c
-                .get("name")
-                .and_then(|n| n.as_str())
-                .unwrap_or("unknown")
-                .to_string();
-            Some(ChannelInfo { id, name })
-        })
-        .collect();
-
-    Ok(channel_infos)
-}
-
-pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
-    let (client, token_obj) = create_slack_client(token);
-    let session = client.open_session(&token_obj);
-
-    let mut all_channels = Vec::new();
-    let mut cursor: Option<SlackCursorId> = None;
-
-    loop {
-        let request = SlackApiConversationsListRequest::new()
-            .with_limit(200)
-            .with_types(vec![SlackConversationType::Public])
-            .opt_cursor(cursor);
-
-        let response = with_rate_limit_retry(|| session.conversations_list(&request), None).await?;
-
-        for channel in response.channels {
-            all_channels.push(ChannelInfo {
-                id: channel.id.0.clone(),
-                name: channel.name.clone().unwrap_or_else(|| "unknown".to_string()),
-            });
-        }
-
-        match response.response_metadata {
-            Some(meta)
-                if meta.next_cursor.is_some()
-                    && !meta.next_cursor.as_ref().unwrap().0.is_empty() =>
-            {
-                cursor = meta.next_cursor;
-            }
-            _ => break,
-        }
-    }
-
-    Ok(all_channels)
 }
 
 pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat) -> Result<usize> {
@@ -442,87 +374,6 @@ fn write_json<T: Serialize>(path: &Path, data: &T) -> Result<()> {
     let writer = BufWriter::new(file);
     serde_json::to_writer_pretty(writer, data).map_err(|e| AppError::JsonSerialize(e.to_string()))?;
     Ok(())
-}
-
-/// Load conversations from local JSON files for editing.
-/// Returns (channels with messages, users data, channels metadata).
-pub fn load_conversations_for_editing(
-    conversations_path: &str,
-    users_path: &str,
-    channels_path: &str,
-) -> Result<LoadedConversations> {
-    // Load conversations
-    let conv_file = File::open(conversations_path).map_err(|e| AppError::ReadFile {
-        path: conversations_path.to_string(),
-        source: e,
-    })?;
-    let conv_reader = BufReader::new(conv_file);
-    let conversations: Vec<serde_json::Value> =
-        serde_json::from_reader(conv_reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
-
-    // Load users
-    let users_file = File::open(users_path).map_err(|e| AppError::ReadFile {
-        path: users_path.to_string(),
-        source: e,
-    })?;
-    let users_reader = BufReader::new(users_file);
-    let users: serde_json::Value =
-        serde_json::from_reader(users_reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
-
-    // Load channels metadata
-    let channels_file = File::open(channels_path).map_err(|e| AppError::ReadFile {
-        path: channels_path.to_string(),
-        source: e,
-    })?;
-    let channels_reader = BufReader::new(channels_file);
-    let channel_data: serde_json::Value =
-        serde_json::from_reader(channels_reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
-
-    // Parse conversations into (channel_id, channel_name, messages) tuples
-    let channels: Vec<(String, String, Vec<serde_json::Value>)> = conversations
-        .into_iter()
-        .filter_map(|conv| {
-            let channel_id = conv.get("channel_id")?.as_str()?.to_string();
-            let channel_name = conv
-                .get("channel_name")
-                .and_then(|n| n.as_str())
-                .unwrap_or("unknown")
-                .to_string();
-            let messages = conv.get("messages")?.as_array()?.to_vec();
-            Some((channel_id, channel_name, messages))
-        })
-        .collect();
-
-    Ok((channels, users, channel_data))
-}
-
-/// Export edited conversations to a JSON file.
-/// Takes a list of channels with their messages (filtered by selection).
-pub fn export_edited_conversations_to_file(
-    channels: &[(String, String, Vec<serde_json::Value>)],
-    output_path: &str,
-) -> Result<usize> {
-    #[derive(Serialize)]
-    struct ExportedConversation {
-        channel_id: String,
-        channel_name: String,
-        messages: Vec<serde_json::Value>,
-    }
-
-    let exported: Vec<ExportedConversation> = channels
-        .iter()
-        .filter(|(_, _, messages)| !messages.is_empty())
-        .map(|(id, name, messages)| ExportedConversation {
-            channel_id: id.clone(),
-            channel_name: name.clone(),
-            messages: messages.clone(),
-        })
-        .collect();
-
-    let total_messages: usize = exported.iter().map(|c| c.messages.len()).sum();
-    write_json(Path::new(output_path), &exported)?;
-
-    Ok(total_messages)
 }
 
 /// Information about a file to download
@@ -1119,3 +970,171 @@ pub async fn archive_range(
         weeks_skipped,
     })
 }
+
+// TUI-specific functionality
+#[cfg(feature = "tui")]
+mod tui_support {
+    use std::fs::File;
+    use std::io::{BufReader, BufWriter};
+    use std::path::Path;
+
+    use serde::{Deserialize, Serialize};
+    use slack_morphism::prelude::*;
+
+    use crate::{AppError, Result};
+    use super::{create_slack_client, with_rate_limit_retry};
+
+    /// Type alias for loaded conversation data: (channel_id, channel_name, messages)
+    pub type LoadedConversations = (
+        Vec<(String, String, Vec<serde_json::Value>)>,
+        serde_json::Value,
+        serde_json::Value,
+    );
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct ChannelInfo {
+        pub id: String,
+        pub name: String,
+    }
+
+    pub fn load_channels_from_file(path: &Path) -> Result<Vec<ChannelInfo>> {
+        let channels: Vec<serde_json::Value> = crate::load_json_file(&path.display().to_string())?;
+
+        let channel_infos = channels
+            .into_iter()
+            .filter_map(|c| {
+                let id = c.get("id")?.as_str()?.to_string();
+                let name = c
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                Some(ChannelInfo { id, name })
+            })
+            .collect();
+
+        Ok(channel_infos)
+    }
+
+    pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
+        let (client, token_obj) = create_slack_client(token);
+        let session = client.open_session(&token_obj);
+
+        let mut all_channels = Vec::new();
+        let mut cursor: Option<SlackCursorId> = None;
+
+        loop {
+            let request = SlackApiConversationsListRequest::new()
+                .with_limit(200)
+                .with_types(vec![SlackConversationType::Public])
+                .opt_cursor(cursor);
+
+            let response = with_rate_limit_retry(|| session.conversations_list(&request), None).await?;
+
+            for channel in response.channels {
+                all_channels.push(ChannelInfo {
+                    id: channel.id.0.clone(),
+                    name: channel.name.clone().unwrap_or_else(|| "unknown".to_string()),
+                });
+            }
+
+            match response.response_metadata {
+                Some(meta)
+                    if meta.next_cursor.is_some()
+                        && !meta.next_cursor.as_ref().unwrap().0.is_empty() =>
+                {
+                    cursor = meta.next_cursor;
+                }
+                _ => break,
+            }
+        }
+
+        Ok(all_channels)
+    }
+
+    /// Load conversations from local JSON files for editing.
+    /// Returns (channels with messages, users data, channels metadata).
+    pub fn load_conversations_for_editing(
+        conversations_path: &str,
+        users_path: &str,
+        channels_path: &str,
+    ) -> Result<LoadedConversations> {
+        let conv_file = File::open(conversations_path).map_err(|e| AppError::ReadFile {
+            path: conversations_path.to_string(),
+            source: e,
+        })?;
+        let conv_reader = BufReader::new(conv_file);
+        let conversations: Vec<serde_json::Value> =
+            serde_json::from_reader(conv_reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
+
+        let users_file = File::open(users_path).map_err(|e| AppError::ReadFile {
+            path: users_path.to_string(),
+            source: e,
+        })?;
+        let users_reader = BufReader::new(users_file);
+        let users: serde_json::Value =
+            serde_json::from_reader(users_reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
+
+        let channels_file = File::open(channels_path).map_err(|e| AppError::ReadFile {
+            path: channels_path.to_string(),
+            source: e,
+        })?;
+        let channels_reader = BufReader::new(channels_file);
+        let channel_data: serde_json::Value =
+            serde_json::from_reader(channels_reader).map_err(|e| AppError::JsonParse(e.to_string()))?;
+
+        let channels: Vec<(String, String, Vec<serde_json::Value>)> = conversations
+            .into_iter()
+            .filter_map(|conv| {
+                let channel_id = conv.get("channel_id")?.as_str()?.to_string();
+                let channel_name = conv
+                    .get("channel_name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let messages = conv.get("messages")?.as_array()?.to_vec();
+                Some((channel_id, channel_name, messages))
+            })
+            .collect();
+
+        Ok((channels, users, channel_data))
+    }
+
+    /// Export edited conversations to a JSON file.
+    pub fn export_edited_conversations_to_file(
+        channels: &[(String, String, Vec<serde_json::Value>)],
+        output_path: &str,
+    ) -> Result<usize> {
+        #[derive(Serialize)]
+        struct ExportedConversation {
+            channel_id: String,
+            channel_name: String,
+            messages: Vec<serde_json::Value>,
+        }
+
+        let exported: Vec<ExportedConversation> = channels
+            .iter()
+            .filter(|(_, _, messages)| !messages.is_empty())
+            .map(|(id, name, messages)| ExportedConversation {
+                channel_id: id.clone(),
+                channel_name: name.clone(),
+                messages: messages.clone(),
+            })
+            .collect();
+
+        let total_messages: usize = exported.iter().map(|c| c.messages.len()).sum();
+
+        let file = File::create(output_path).map_err(|e| AppError::WriteFile {
+            path: output_path.to_string(),
+            source: e,
+        })?;
+        let writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(writer, &exported)
+            .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+
+        Ok(total_messages)
+    }
+}
+
+#[cfg(feature = "tui")]
+pub use tui_support::*;
