@@ -1,0 +1,141 @@
+# =============================================================================
+# Slack Archive Server Configuration
+# =============================================================================
+#
+# This file configures the slack-archive-server HTTP server for serving
+# Slack archive parquet files.
+#
+# Usage:
+#   1. Copy this file: cp resources/sample-server-config.toml config.toml
+#   2. Edit the values to match your setup
+#   3. Start the server: just run-server
+#      Or: cargo run --features server --bin slack-archive-server -- serve config.toml
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Server Configuration
+# -----------------------------------------------------------------------------
+[server]
+
+# Host address to bind the HTTP server to.
+#
+# Common values:
+#   - "127.0.0.1" : Only accept connections from localhost (most secure)
+#   - "0.0.0.0"   : Accept connections from any network interface
+#   - "192.168.1.100" : Bind to a specific network interface
+#
+# Default: "127.0.0.1"
+host = "127.0.0.1"
+
+# Port number to listen on.
+#
+# Make sure this port is not already in use by another service.
+# Ports below 1024 require root/administrator privileges.
+#
+# Default: 8080
+port = 8080
+
+# (Optional) Path to a directory containing static assets to serve.
+#
+# When configured, any request that doesn't match an /archive/* endpoint
+# will be served from this directory. This is useful for serving a web UI
+# alongside the API.
+#
+# Examples:
+#   static_assets = "/var/www/slack-viewer"
+#   static_assets = "./frontend/dist"
+#
+# Uncomment the line below to enable static file serving:
+# static_assets = "./static"
+
+# -----------------------------------------------------------------------------
+# Slack Archive Configuration
+# -----------------------------------------------------------------------------
+[slack-archive]
+
+# Base path where the Slack archive parquet files are located.
+#
+# This directory should contain the following structure:
+#
+#   <base_path>/
+#   ├── users.parquet              # User data (from export-users --format parquet)
+#   ├── channels.parquet           # Channel data (from export-channels --format parquet)
+#   └── conversations/             # Thread data (from archive-range)
+#       └── year=YYYY/
+#           └── week=WW/
+#               └── threads.parquet
+#
+# The conversations directory uses Hive-style partitioning by year and week.
+# Each partition contains a threads.parquet file with messages from that week.
+#
+# To create this structure, use the following commands:
+#   just export-users output=<base_path>/users format=parquet
+#   just export-channels output=<base_path>/channels format=parquet
+#   just archive-range <from_year> <from_week> <to_year> <to_week> output=<base_path>/conversations
+#
+# Examples:
+#   base_path = "/data/slack-archive"
+#   base_path = "./archive"
+#   base_path = "/home/user/slack-exports"
+#
+base_path = "./archive"
+
+# -----------------------------------------------------------------------------
+# Meilisearch Configuration (Optional)
+# -----------------------------------------------------------------------------
+# Enable search functionality by configuring Meilisearch connection.
+# If this section is omitted, the /archive/search endpoint will return
+# a 503 Service Unavailable error.
+#
+# To set up Meilisearch:
+#   1. Start Meilisearch: ./meilisearch --master-key YOUR_MASTER_KEY
+#   2. Import index: just import-meilisearch YOUR_API_KEY
+#   3. Configure this section with your Meilisearch details
+#
+# Uncomment and configure the following section to enable search:
+
+# [meilisearch]
+# # Meilisearch server URL
+# url = "http://localhost:7700"
+#
+# # API key for authentication (use the master key or a search API key)
+# api-key = "your-api-key-here"
+#
+# # Name of the index to search
+# index-name = "slack"
+
+# =============================================================================
+# API Endpoints Reference
+# =============================================================================
+#
+# Once the server is running, the following endpoints are available:
+#
+# GET /archive/users
+#   Returns the users.parquet file.
+#   Response: application/octet-stream
+#
+# GET /archive/channels
+#   Returns the channels.parquet file.
+#   Response: application/octet-stream
+#
+# GET /archive/threads-in-range?from=YYYY-MM-DD&to=YYYY-MM-DD
+#   Returns a list of available year/week partitions within the date range.
+#   Only returns partitions where the parquet file actually exists.
+#   Response: application/json
+#   Example: /archive/threads-in-range?from=2024-01-01&to=2024-01-31
+#   Response body: {"available": [{"year": 2024, "week": 1}, {"year": 2024, "week": 2}, ...]}
+#
+# GET /archive/threads?year=YYYY&week=WW
+#   Returns the threads.parquet file for a specific year and week.
+#   Response: application/octet-stream
+#   Example: /archive/threads?year=2024&week=3
+#
+# POST /archive/search?query=<search-query>&limit=<max-results>
+#   Searches messages via Meilisearch.
+#   Requires [meilisearch] configuration section.
+#   Response: application/json
+#   Example: /archive/search?query=deployment&limit=50
+#   Response body: {"hits": [...], "processing_time_ms": 5, "estimated_total_hits": 42}
+#
+# =============================================================================

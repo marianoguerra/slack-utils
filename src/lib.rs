@@ -27,6 +27,15 @@ mod widgets;
 #[cfg(feature = "duckdb")]
 pub mod duckdb_query;
 
+#[cfg(feature = "server")]
+pub mod archive_server;
+
+// Re-export meilisearch types for the server binary
+#[cfg(feature = "server")]
+pub use index::{IndexChannel, IndexEntry, IndexUser};
+#[cfg(feature = "server")]
+pub use meilisearch::query_meilisearch;
+
 /// Output format for export commands
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum OutputFormat {

@@ -24,16 +24,31 @@ cleanup() {
 trap cleanup EXIT
 
 echo ""
-echo "=== Building all binaries ==="
-cargo build --all-features
+echo "=== Building binaries (features built separately to avoid linker issues) ==="
+echo "Building default binary..."
+cargo build
+echo "Building with duckdb feature..."
+cargo build --features duckdb --bin slack-utils-duckdb
+echo "Building with server feature..."
+cargo build --features server --bin slack-archive-server
 
 echo ""
-echo "=== Running tests ==="
-cargo test --all-features
+echo "=== Running tests (features tested separately) ==="
+echo "Testing default..."
+cargo test
+echo "Testing with duckdb feature..."
+cargo test --features duckdb
+echo "Testing with server feature..."
+cargo test --features server
 
 echo ""
-echo "=== Running clippy ==="
-cargo clippy --all-features
+echo "=== Running clippy (features checked separately) ==="
+echo "Clippy default..."
+cargo clippy
+echo "Clippy with duckdb feature..."
+cargo clippy --features duckdb
+echo "Clippy with server feature..."
+cargo clippy --features server
 
 echo ""
 echo "=== Testing slack-utils --help ==="
@@ -58,6 +73,11 @@ echo ""
 echo "=== Testing slack-utils-duckdb --help ==="
 cargo run --features duckdb --bin slack-utils-duckdb -- --help
 cargo run --features duckdb --bin slack-utils-duckdb -- query --help
+
+echo ""
+echo "=== Testing slack-archive-server --help ==="
+cargo run --features server --bin slack-archive-server -- --help
+cargo run --features server --bin slack-archive-server -- serve --help
 
 echo ""
 echo "=== Creating test fixture files ==="

@@ -183,3 +183,15 @@ run-duckdb-sample-queries:
 # Run smoke tests for all CLI commands
 smoke-test:
     ./scripts/smoke-test.sh
+
+# Build the archive server binary
+build-server:
+    cargo build --features server --bin slack-archive-server
+
+# Run the archive server with a config file
+run-server config="config.toml":
+    cargo run --features server --bin slack-archive-server -- serve {{config}}
+
+# Run smoke tests for the archive server
+server-smoke-test:
+    ./scripts/server-smoke-test.sh

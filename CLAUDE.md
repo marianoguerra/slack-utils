@@ -9,6 +9,7 @@ A set of utilities to interact with slack archives
 - **ratatui** - Terminal UI framework for building rich terminal interfaces
 - **thiserror** - Derive macro for implementing std::error::Error
 - **duckdb** - Optional dependency for SQL queries on parquet exports (feature-gated)
+- **axum** - Optional dependency for HTTP server (feature-gated)
 - **bun** - Use bun for any JavaScript/TypeScript tasks
 
 ## slack-utils-duckdb Binary
@@ -58,6 +59,93 @@ slack-utils-duckdb query "SELECT name, real_name, email FROM data WHERE is_bot =
 
 # Query channels parquet
 slack-utils-duckdb query "SELECT name, num_members FROM data WHERE is_archived = false ORDER BY num_members DESC" --parquet channels.parquet
+```
+
+## slack-archive-server Binary
+
+An HTTP server for serving Slack archive parquet files. Built with the `server` feature flag.
+
+### Building
+
+```bash
+cargo build --features server --bin slack-archive-server
+```
+
+### Configuration
+
+The server requires a TOML configuration file. See `resources/sample-server-config.toml` for a fully documented example.
+
+```toml
+[server]
+host = "127.0.0.1"
+port = 8080
+# static_assets = "./static"  # Optional: serve static files
+
+[slack-archive]
+base_path = "./archive"
+```
+
+The `base_path` should point to a directory with this structure:
+
+```
+archive/
+├── users.parquet
+├── channels.parquet
+└── conversations/
+    └── year=YYYY/
+        └── week=WW/
+            └── threads.parquet
+```
+
+### Usage
+
+```bash
+# Using cargo
+cargo run --features server --bin slack-archive-server -- serve config.toml
+
+# Using just
+just run-server config.toml
+
+# Or build first, then run directly
+just build-server
+./target/debug/slack-archive-server serve config.toml
+```
+
+### API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /archive/users` | Returns `users.parquet` file |
+| `GET /archive/channels` | Returns `channels.parquet` file |
+| `GET /archive/threads-in-range?from=YYYY-MM-DD&to=YYYY-MM-DD` | Lists available year/week partitions in date range |
+| `GET /archive/threads?year=YYYY&week=WW` | Returns `threads.parquet` for specific week |
+| `POST /archive/search?query=<text>&limit=<n>` | Search messages via Meilisearch (requires config) |
+
+### Example API Calls
+
+```bash
+# Get users parquet file
+curl -O http://localhost:8080/archive/users
+
+# Get channels parquet file
+curl -O http://localhost:8080/archive/channels
+
+# List available weeks in January 2024
+curl "http://localhost:8080/archive/threads-in-range?from=2024-01-01&to=2024-01-31"
+# Response: {"available":[{"year":2024,"week":1},{"year":2024,"week":2},...]}
+
+# Get threads for week 3 of 2024
+curl -O "http://localhost:8080/archive/threads?year=2024&week=3"
+
+# Search for messages (requires meilisearch config)
+curl -X POST "http://localhost:8080/archive/search?query=deployment&limit=20"
+# Response: {"hits":[...],"processing_time_ms":5,"estimated_total_hits":42}
+```
+
+### Smoke Test
+
+```bash
+just server-smoke-test
 ```
 
 ## Developer Workflow
