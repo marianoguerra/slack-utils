@@ -25,30 +25,30 @@ trap cleanup EXIT
 
 echo ""
 echo "=== Building binaries (features built separately to avoid linker issues) ==="
-echo "Building default binary..."
+echo "Building default binary (with tui)..."
 cargo build
-echo "Building with duckdb feature..."
-cargo build --features duckdb --bin slack-utils-duckdb
-echo "Building with server feature..."
-cargo build --features server --bin slack-archive-server
+echo "Building with duckdb feature (no tui)..."
+cargo build --no-default-features --features duckdb --bin slack-utils-duckdb
+echo "Building with server feature (no tui)..."
+cargo build --no-default-features --features server --bin slack-archive-server
 
 echo ""
 echo "=== Running tests (features tested separately) ==="
-echo "Testing default..."
+echo "Testing default (with tui)..."
 cargo test
-echo "Testing with duckdb feature..."
-cargo test --features duckdb
-echo "Testing with server feature..."
-cargo test --features server
+echo "Testing with duckdb feature (no tui)..."
+cargo test --no-default-features --features duckdb
+echo "Testing with server feature (no tui)..."
+cargo test --no-default-features --features server
 
 echo ""
 echo "=== Running clippy (features checked separately) ==="
-echo "Clippy default..."
+echo "Clippy default (with tui)..."
 cargo clippy
-echo "Clippy with duckdb feature..."
-cargo clippy --features duckdb
-echo "Clippy with server feature..."
-cargo clippy --features server
+echo "Clippy with duckdb feature (no tui)..."
+cargo clippy --no-default-features --features duckdb
+echo "Clippy with server feature (no tui)..."
+cargo clippy --no-default-features --features server
 
 echo ""
 echo "=== Testing slack-utils --help ==="
@@ -71,13 +71,13 @@ cargo run -- query-meilisearch --help
 
 echo ""
 echo "=== Testing slack-utils-duckdb --help ==="
-cargo run --features duckdb --bin slack-utils-duckdb -- --help
-cargo run --features duckdb --bin slack-utils-duckdb -- query --help
+cargo run --no-default-features --features duckdb --bin slack-utils-duckdb -- --help
+cargo run --no-default-features --features duckdb --bin slack-utils-duckdb -- query --help
 
 echo ""
 echo "=== Testing slack-archive-server --help ==="
-cargo run --features server --bin slack-archive-server -- --help
-cargo run --features server --bin slack-archive-server -- serve --help
+cargo run --no-default-features --features server --bin slack-archive-server -- --help
+cargo run --no-default-features --features server --bin slack-archive-server -- serve --help
 
 echo ""
 echo "=== Creating test fixture files ==="
@@ -192,21 +192,21 @@ echo ""
 echo "=== Testing slack-utils-duckdb with existing parquet files ==="
 
 if [ -f "users.parquet" ]; then
-    cargo run --features duckdb --bin slack-utils-duckdb -- query "SELECT COUNT(*) FROM data" --parquet users.parquet
+    cargo run --no-default-features --features duckdb --bin slack-utils-duckdb -- query "SELECT COUNT(*) FROM data" --parquet users.parquet
     echo "query users.parquet: OK"
 else
     echo "users.parquet not found, skipping"
 fi
 
 if [ -f "channels.parquet" ]; then
-    cargo run --features duckdb --bin slack-utils-duckdb -- query "SELECT COUNT(*) FROM data" --parquet channels.parquet
+    cargo run --no-default-features --features duckdb --bin slack-utils-duckdb -- query "SELECT COUNT(*) FROM data" --parquet channels.parquet
     echo "query channels.parquet: OK"
 else
     echo "channels.parquet not found, skipping"
 fi
 
 if [ -d "conversations" ]; then
-    cargo run --features duckdb --bin slack-utils-duckdb -- query "SELECT COUNT(*) FROM data"
+    cargo run --no-default-features --features duckdb --bin slack-utils-duckdb -- query "SELECT COUNT(*) FROM data"
     echo "query conversations parquet: OK"
 else
     echo "conversations directory not found, skipping"

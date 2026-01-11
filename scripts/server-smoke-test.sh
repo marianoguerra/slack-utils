@@ -26,8 +26,8 @@ cleanup() {
 trap cleanup EXIT
 
 echo ""
-echo "=== Building slack-archive-server ==="
-cargo build --features server --bin slack-archive-server
+echo "=== Building slack-archive-server (no tui) ==="
+cargo build --no-default-features --features server --bin slack-archive-server
 
 echo ""
 echo "=== Setting up test archive structure ==="

@@ -1,27 +1,25 @@
 use std::fs::File;
-use std::io::{self, BufReader};
-use std::time::Duration;
+use std::io::BufReader;
 
 use chrono::{Datelike, Local, NaiveDate};
-use crossterm::{
-    event::{self, Event, KeyEventKind},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use ratatui::Terminal;
 
-mod app;
 mod cli;
 mod commands;
 mod error;
 mod index;
-mod input;
 mod markdown;
 mod meilisearch;
 mod parquet;
 mod settings;
 mod slack;
+
+#[cfg(feature = "tui")]
+mod app;
+#[cfg(feature = "tui")]
+mod input;
+#[cfg(feature = "tui")]
 mod ui;
+#[cfg(feature = "tui")]
 mod widgets;
 
 #[cfg(feature = "duckdb")]
@@ -180,7 +178,18 @@ pub fn week_to_date_range(year: i32, week: u32) -> Result<(NaiveDate, NaiveDate)
 }
 
 /// Run the terminal UI
+#[cfg(feature = "tui")]
 pub fn run_ui() -> Result<()> {
+    use std::io;
+    use std::time::Duration;
+
+    use crossterm::{
+        event::{self, Event, KeyEventKind},
+        execute,
+        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    };
+    use ratatui::Terminal;
+
     let token = load_token()?;
 
     enable_raw_mode()?;
