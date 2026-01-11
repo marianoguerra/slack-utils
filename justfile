@@ -196,6 +196,44 @@ run-server config="config.toml":
 server-smoke-test:
     ./scripts/server-smoke-test.sh
 
+# Start a local archive server for testing the client with local parquet files
+start-local-archive-server port="8080" base_path=".":
+    #!/usr/bin/env bash
+    set -e
+    CONFIG=$(mktemp --suffix=.toml)
+    cat > "$CONFIG" <<EOF
+    [server]
+    host = "127.0.0.1"
+    port = {{port}}
+    static_assets = "{{client_dir}}"
+
+    [slack-archive]
+    base_path = "{{base_path}}"
+    EOF
+    echo "Starting local archive server on http://127.0.0.1:{{port}}"
+    echo "Archive base path: {{base_path}}"
+    echo "Static assets: {{client_dir}}"
+    echo ""
+    echo "Test the client at: http://127.0.0.1:{{port}}/examples/index.html"
+    echo ""
+    trap "rm -f $CONFIG" EXIT
+    cargo run --features server --bin slack-archive-server -- serve "$CONFIG"
+
+# JS client directory
+client_dir := "tools/slack-archive-client"
+
+# Build the JS client library (ESM + TypeScript declarations)
+build-client:
+    cd {{client_dir}} && bun install && bun run dist
+
+# Clean the JS client dist folder
+clean-client:
+    rm -rf {{client_dir}}/dist
+
+# Type check the JS client
+typecheck-client:
+    cd {{client_dir}} && bun run typecheck
+
 # Build all binaries for release and create distribution package
 dist:
     #!/usr/bin/env bash
@@ -219,6 +257,10 @@ dist:
     cargo build --release --features server --bin slack-archive-server
     cp target/release/slack-archive-server dist/
 
+    echo "Building slack-archive-client (JS)..."
+    cd {{client_dir}} && bun install && bun run dist
+    cp -r {{client_dir}}/dist dist/slack-archive-client
+
     echo "Copying documentation and config files..."
     cp resources/dist-README.md dist/README.md
     cp resources/sample-server-config.toml dist/config.example.toml
@@ -228,8 +270,9 @@ dist:
     ls -lah dist/
     echo ""
     echo "Contents:"
-    echo "  - slack-utils          : Main CLI tool"
-    echo "  - slack-utils-duckdb   : DuckDB query tool"
-    echo "  - slack-archive-server : HTTP server"
-    echo "  - README.md            : Usage instructions"
-    echo "  - config.example.toml  : Server config template"
+    echo "  - slack-utils            : Main CLI tool"
+    echo "  - slack-utils-duckdb     : DuckDB query tool"
+    echo "  - slack-archive-server   : HTTP server"
+    echo "  - slack-archive-client/  : JS client library (ESM + types)"
+    echo "  - README.md              : Usage instructions"
+    echo "  - config.example.toml    : Server config template"

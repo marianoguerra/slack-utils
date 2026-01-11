@@ -113,13 +113,13 @@ just build-server
 
 ### API Endpoints
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /archive/users` | Returns `users.parquet` file |
-| `GET /archive/channels` | Returns `channels.parquet` file |
+| Endpoint                                                      | Description                                        |
+| ------------------------------------------------------------- | -------------------------------------------------- |
+| `GET /archive/users`                                          | Returns `users.parquet` file                       |
+| `GET /archive/channels`                                       | Returns `channels.parquet` file                    |
 | `GET /archive/threads-in-range?from=YYYY-MM-DD&to=YYYY-MM-DD` | Lists available year/week partitions in date range |
-| `GET /archive/threads?year=YYYY&week=WW` | Returns `threads.parquet` for specific week |
-| `POST /archive/search?query=<text>&limit=<n>` | Search messages via Meilisearch (requires config) |
+| `GET /archive/threads?year=YYYY&week=WW`                      | Returns `threads.parquet` for specific week        |
+| `POST /archive/search?query=<text>&limit=<n>`                 | Search messages via Meilisearch (requires config)  |
 
 ### Example API Calls
 
@@ -154,13 +154,16 @@ All to logic should be in lib.rs and modules, the main.rs should only import fun
 
 Don't use unwrap or expect or any other functionality that causes a panic at runtime outside of tests, always handle error cases with proper error handling.
 
-Always keep the tui/cli README.md smoke-test target and justfile in sync when adding new features and fields/options
-
 Reuse core logic for the tui and cli.
 
 When implementing tasks that may take more than 1 second add a loading screen to the tui and progress to the cli, make sure the progress report functionality of the cli doesn't appear in the tui when reusing core logic.
 
 Prefer functions over macros unless macros are strictly necessary (e.g., for compile-time code generation that cannot be achieved with generics or closures).
+
+## Consistency Checks
+
+- Always keep the tui/cli README.md smoke-test target and justfile in sync when adding new features and fields/options
+- Keep the slack-archive-server API in sync with it's client libraries
 
 ## Error Handling
 

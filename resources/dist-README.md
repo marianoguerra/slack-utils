@@ -159,6 +159,79 @@ curl -O "http://localhost:8080/archive/threads?year=2024&week=3"
 curl -X POST "http://localhost:8080/archive/search?query=deployment&limit=20"
 ```
 
+### slack-archive-client
+
+JavaScript/TypeScript client library for the `slack-archive-server` HTTP API. Located in `slack-archive-client/`.
+
+**Installation**
+
+```bash
+# Copy to your project
+cp -r slack-archive-client /path/to/your/project/
+
+# Or use as a local dependency in package.json
+"dependencies": {
+  "slack-archive-client": "file:./slack-archive-client"
+}
+```
+
+**Usage**
+
+```typescript
+import { SlackArchiveClient } from './slack-archive-client/index.js';
+
+const client = new SlackArchiveClient({
+  baseUrl: 'http://localhost:8080'
+});
+
+// Check server connectivity
+const isUp = await client.ping();
+
+// Get available thread partitions in a date range
+const { available } = await client.getThreadsInRange('2024-01-01', '2024-12-31');
+
+// Download parquet files as ArrayBuffer
+const usersParquet = await client.getUsers();
+const channelsParquet = await client.getChannels();
+const threadsParquet = await client.getThreads(2024, 3); // year, week
+
+// Search messages (requires Meilisearch configured on server)
+const results = await client.search('deployment', 20);
+```
+
+**API**
+
+| Method | Description | Returns |
+|--------|-------------|---------|
+| `ping()` | Check if server is reachable | `Promise<boolean>` |
+| `getUsers()` | Download users.parquet | `Promise<ArrayBuffer>` |
+| `getChannels()` | Download channels.parquet | `Promise<ArrayBuffer>` |
+| `getThreadsInRange(from, to)` | List available year/week partitions | `Promise<ThreadsInRangeResponse>` |
+| `getThreads(year, week)` | Download threads.parquet for a week | `Promise<ArrayBuffer>` |
+| `search(query, limit?)` | Search messages via Meilisearch | `Promise<SearchResponse>` |
+
+**Error Handling**
+
+```typescript
+import { SlackArchiveClient, SlackArchiveError } from './slack-archive-client/index.js';
+
+try {
+  await client.getUsers();
+} catch (error) {
+  if (error instanceof SlackArchiveError) {
+    console.log('Status code:', error.statusCode);
+    console.log('Server message:', error.serverError);
+  }
+}
+```
+
+**Contents**
+
+- `index.js` - ESM module
+- `index.d.ts` - TypeScript type declarations
+- `client.d.ts` - Client class types
+- `types.d.ts` - Data type definitions
+
 ## Directory Structure
 
 **Expected archive layout:**

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Slack Archive Client - Smoke Test</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+    }
+    .config {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      margin-bottom: 15px;
+    }
+    button {
+      background: #4A154B;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #611f69;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .status {
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .status h2 {
+      margin-top: 0;
+    }
+    .result {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .result.success {
+      background: #d4edda;
+      color: #155724;
+    }
+    .result.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .result.running {
+      background: #fff3cd;
+      color: #856404;
+    }
+    .console-hint {
+      background: #e7f3ff;
+      border-left: 4px solid #0066cc;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 0 4px 4px 0;
+    }
+    .console-hint code {
+      background: rgba(0,0,0,0.1);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Slack Archive Client - Smoke Test</h1>
+
+  <div class="console-hint">
+    <strong>Open the browser console</strong> to see detailed test results.<br>
+    Press <code>F12</code> or <code>Cmd+Option+J</code> (Mac) / <code>Ctrl+Shift+J</code> (Windows/Linux)
+  </div>
+
+  <div class="config">
+    <label for="serverUrl">Server URL:</label>
+    <input type="text" id="serverUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+
+    <label for="dateFrom">Date Range - From:</label>
+    <input type="date" id="dateFrom" value="2024-01-01">
+
+    <label for="dateTo">Date Range - To:</label>
+    <input type="date" id="dateTo" value="2024-12-31">
+
+    <button id="runTests" onclick="runSmokeTests()">Run Smoke Tests</button>
+  </div>
+
+  <div class="status">
+    <h2>Test Status</h2>
+    <div id="results">
+      <p>Click "Run Smoke Tests" to begin.</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import { SlackArchiveClient, SlackArchiveError } from '../dist/index.js';
+
+    window.runSmokeTests = async function() {
+      const serverUrl = document.getElementById('serverUrl').value;
+      const dateFrom = document.getElementById('dateFrom').value;
+      const dateTo = document.getElementById('dateTo').value;
+      const resultsDiv = document.getElementById('results');
+      const runButton = document.getElementById('runTests');
+
+      runButton.disabled = true;
+      resultsDiv.innerHTML = '<div class="result running">Running tests...</div>';
+
+      const client = new SlackArchiveClient({ baseUrl: serverUrl });
+
+      console.group('%c Slack Archive Client - Smoke Test ', 'background: #4A154B; color: white; font-size: 14px; padding: 5px;');
+      console.log('Server URL:', serverUrl);
+      console.log('Date Range:', dateFrom, 'to', dateTo);
+      console.log('');
+
+      const results = [];
+
+      // Test 1: Ping
+      console.group('%c Test 1: Ping Server ', 'background: #0066cc; color: white;');
+      try {
+        const pingResult = await client.ping();
+        console.log('Result:', pingResult ? 'Server is reachable' : 'Server not reachable');
+        results.push({ name: 'Ping', success: pingResult, message: pingResult ? 'Server is reachable' : 'Server not reachable' });
+      } catch (error) {
+        console.error('Error:', error);
+        results.push({ name: 'Ping', success: false, message: error.message });
+      }
+      console.groupEnd();
+
+      // Test 2: Get Threads In Range
+      console.group('%c Test 2: Get Threads In Range ', 'background: #0066cc; color: white;');
+      let availableWeeks = [];
+      try {
+        const threadsInRange = await client.getThreadsInRange(dateFrom, dateTo);
+        availableWeeks = threadsInRange.available;
+        console.log('Available weeks:', availableWeeks.length);
+        console.table(availableWeeks.slice(0, 10));
+        if (availableWeeks.length > 10) {
+          console.log(`... and ${availableWeeks.length - 10} more`);
+        }
+        results.push({ name: 'Threads In Range', success: true, message: `Found ${availableWeeks.length} available weeks` });
+      } catch (error) {
+        console.error('Error:', error);
+        results.push({ name: 'Threads In Range', success: false, message: error.message });
+      }
+      console.groupEnd();
+
+      // Test 3: Get Users
+      console.group('%c Test 3: Get Users Parquet ', 'background: #0066cc; color: white;');
+      try {
+        const usersBuffer = await client.getUsers();
+        console.log('Users parquet size:', formatBytes(usersBuffer.byteLength));
+        results.push({ name: 'Get Users', success: true, message: `Downloaded ${formatBytes(usersBuffer.byteLength)}` });
+      } catch (error) {
+        console.error('Error:', error);
+        const isNotFound = error instanceof SlackArchiveError && error.statusCode === 404;
+        results.push({ name: 'Get Users', success: false, message: error.message, warning: isNotFound });
+      }
+      console.groupEnd();
+
+      // Test 4: Get Channels
+      console.group('%c Test 4: Get Channels Parquet ', 'background: #0066cc; color: white;');
+      try {
+        const channelsBuffer = await client.getChannels();
+        console.log('Channels parquet size:', formatBytes(channelsBuffer.byteLength));
+        results.push({ name: 'Get Channels', success: true, message: `Downloaded ${formatBytes(channelsBuffer.byteLength)}` });
+      } catch (error) {
+        console.error('Error:', error);
+        const isNotFound = error instanceof SlackArchiveError && error.statusCode === 404;
+        results.push({ name: 'Get Channels', success: false, message: error.message, warning: isNotFound });
+      }
+      console.groupEnd();
+
+      // Test 5: Get Threads (if any available)
+      console.group('%c Test 5: Get Threads Parquet ', 'background: #0066cc; color: white;');
+      if (availableWeeks.length > 0) {
+        const firstWeek = availableWeeks[0];
+        console.log(`Fetching threads for year=${firstWeek.year}, week=${firstWeek.week}`);
+        try {
+          const threadsBuffer = await client.getThreads(firstWeek.year, firstWeek.week);
+          console.log('Threads parquet size:', formatBytes(threadsBuffer.byteLength));
+          results.push({ name: 'Get Threads', success: true, message: `Downloaded ${formatBytes(threadsBuffer.byteLength)} for week ${firstWeek.year}-W${firstWeek.week}` });
+        } catch (error) {
+          console.error('Error:', error);
+          results.push({ name: 'Get Threads', success: false, message: error.message });
+        }
+      } else {
+        console.log('Skipped: No available weeks found');
+        results.push({ name: 'Get Threads', success: true, message: 'Skipped: No available weeks in range', skipped: true });
+      }
+      console.groupEnd();
+
+      // Test 6: Search (may fail if Meilisearch not configured)
+      console.group('%c Test 6: Search ', 'background: #0066cc; color: white;');
+      try {
+        const searchResults = await client.search('test', 5);
+        console.log('Search results:', searchResults.hits.length);
+        console.log('Processing time:', searchResults.processing_time_ms, 'ms');
+        console.log('Estimated total:', searchResults.estimated_total_hits);
+        if (searchResults.hits.length > 0) {
+          console.group('Sample hits:');
+          searchResults.hits.forEach((hit, i) => {
+            console.log(`${i + 1}. [${hit.channel.name}] ${hit.text.substring(0, 100)}...`);
+          });
+          console.groupEnd();
+        }
+        results.push({ name: 'Search', success: true, message: `Found ${searchResults.hits.length} results in ${searchResults.processing_time_ms}ms` });
+      } catch (error) {
+        console.error('Error:', error);
+        const isNotConfigured = error instanceof SlackArchiveError && error.statusCode === 503;
+        results.push({
+          name: 'Search',
+          success: false,
+          message: error.message,
+          warning: isNotConfigured
+        });
+      }
+      console.groupEnd();
+
+      // Summary
+      console.group('%c Summary ', 'background: #28a745; color: white; font-size: 14px;');
+      const passed = results.filter(r => r.success).length;
+      const failed = results.filter(r => !r.success && !r.warning).length;
+      const warnings = results.filter(r => !r.success && r.warning).length;
+      console.log(`Passed: ${passed}/${results.length}`);
+      if (warnings > 0) {
+        console.log(`Warnings: ${warnings} (expected failures, e.g., missing files or Meilisearch not configured)`);
+      }
+      if (failed > 0) {
+        console.log(`Failed: ${failed}`);
+      }
+      console.table(results.map(r => ({
+        Test: r.name,
+        Status: r.success ? 'PASS' : (r.warning ? 'WARN' : 'FAIL'),
+        Message: r.message
+      })));
+      console.groupEnd();
+
+      console.groupEnd(); // Main group
+
+      // Update UI
+      resultsDiv.innerHTML = results.map(r => {
+        const className = r.success ? 'success' : (r.warning ? 'running' : 'error');
+        const icon = r.success ? '✓' : (r.warning ? '⚠' : '✗');
+        return `<div class="result ${className}">${icon} <strong>${r.name}:</strong> ${r.message}</div>`;
+      }).join('');
+
+      runButton.disabled = false;
+    };
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+  </script>
+</body>
+</html>
