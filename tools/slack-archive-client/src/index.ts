@@ -9,3 +9,13 @@ export type {
   SearchResponse,
   ErrorResponse,
 } from "./types.js";
+
+export { SlackArchiveDuckDB, DuckDBClientError } from "./duckdb-client.js";
+export type {
+  DuckDBClientOptions,
+  QueryResult,
+  LoadProgress,
+  ProgressCallback,
+  LoadedTableInfo,
+  TableName,
+} from "./duckdb-client.js";

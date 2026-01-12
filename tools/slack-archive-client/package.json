@@ -22,7 +22,16 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@duckdb/duckdb-wasm": "^1.32.0",
     "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "@duckdb/duckdb-wasm": ">=1.32.0"
+  },
+  "peerDependenciesMeta": {
+    "@duckdb/duckdb-wasm": {
+      "optional": true
+    }
   },
   "keywords": [
     "slack",

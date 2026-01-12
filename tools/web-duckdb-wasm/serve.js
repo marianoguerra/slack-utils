@@ -37,6 +37,14 @@ Required files in base path:
   - users.parquet
   - channels.parquet
   - conversations/    (directory with year=*/week=*/*.parquet structure)
+
+API endpoints (compatible with slack-archive-server):
+  GET /archive/users              - Returns users.parquet
+  GET /archive/channels           - Returns channels.parquet
+  GET /archive/threads-in-range   - List available year/weeks in date range
+      ?from=YYYY-MM-DD&to=YYYY-MM-DD
+  GET /archive/threads            - Returns threads.parquet for a specific week
+      ?year=YYYY&week=WW
 `);
     process.exit(0);
 }
@@ -97,40 +105,6 @@ function getAvailableWeeks() {
     return weeks.sort((a, b) => a.year !== b.year ? a.year - b.year : a.week - b.week);
 }
 
-// Get parquet files for a date range
-function getParquetFilesForRange(startDate, endDate) {
-    const files = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-
-    const availableWeeks = getAvailableWeeks();
-
-    for (const { year, week } of availableWeeks) {
-        // Calculate the Monday of this ISO week
-        const weekStart = getDateOfISOWeek(week, year);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekEnd.getDate() + 6);
-
-        // Check if this week overlaps with the requested range
-        if (weekEnd >= start && weekStart <= end) {
-            const weekPath = join(conversationsPath, `year=${year}`, `week=${String(week).padStart(2, '0')}`);
-            if (existsSync(weekPath)) {
-                const parquetFiles = readdirSync(weekPath).filter(f => f.endsWith(".parquet"));
-                for (const pf of parquetFiles) {
-                    files.push({
-                        path: join(weekPath, pf),
-                        year,
-                        week,
-                        filename: pf
-                    });
-                }
-            }
-        }
-    }
-
-    return files;
-}
-
 // Get the Monday of an ISO week
 function getDateOfISOWeek(week, year) {
     const jan4 = new Date(year, 0, 4);
@@ -139,6 +113,41 @@ function getDateOfISOWeek(week, year) {
     monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7);
     return monday;
 }
+
+// Get available weeks for a date range (matching slack-archive-server API)
+function getWeeksInRange(fromDate, toDate) {
+    const available = [];
+    const start = new Date(fromDate);
+    const end = new Date(toDate);
+
+    const allWeeks = getAvailableWeeks();
+
+    for (const { year, week } of allWeeks) {
+        // Calculate the Monday of this ISO week
+        const weekStart = getDateOfISOWeek(week, year);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+
+        // Check if this week overlaps with the requested range
+        if (weekEnd >= start && weekStart <= end) {
+            available.push({ year, week });
+        }
+    }
+
+    return available;
+}
+
+// Get threads parquet path for a year/week
+function getThreadsPath(year, week) {
+    const weekStr = String(week).padStart(2, '0');
+    return join(conversationsPath, `year=${year}`, `week=${weekStr}`, "threads.parquet");
+}
+
+// Common CORS and security headers
+const corsHeaders = {
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Embedder-Policy": "require-corp",
+};
 
 // Bundle app.js on startup
 console.log("Bundling app.js...");
@@ -161,72 +170,104 @@ const server = Bun.serve({
         const url = new URL(req.url);
         let path = url.pathname;
 
-        // API endpoints
-        if (path === "/api/users.parquet") {
+        // API endpoints (matching slack-archive-server)
+        if (path === "/archive/users") {
+            if (!existsSync(usersPath)) {
+                return Response.json({ error: `File not found: ${usersPath}` }, { status: 404, headers: corsHeaders });
+            }
             return new Response(Bun.file(usersPath), {
                 headers: {
                     "Content-Type": "application/octet-stream",
-                    "Cross-Origin-Opener-Policy": "same-origin",
-                    "Cross-Origin-Embedder-Policy": "require-corp",
+                    "Content-Disposition": "attachment; filename=\"users.parquet\"",
+                    ...corsHeaders,
                 }
             });
         }
 
-        if (path === "/api/channels.parquet") {
+        if (path === "/archive/channels") {
+            if (!existsSync(channelsPath)) {
+                return Response.json({ error: `File not found: ${channelsPath}` }, { status: 404, headers: corsHeaders });
+            }
             return new Response(Bun.file(channelsPath), {
                 headers: {
                     "Content-Type": "application/octet-stream",
-                    "Cross-Origin-Opener-Policy": "same-origin",
-                    "Cross-Origin-Embedder-Policy": "require-corp",
+                    "Content-Disposition": "attachment; filename=\"channels.parquet\"",
+                    ...corsHeaders,
                 }
             });
         }
 
-        if (path === "/api/conversations") {
-            const startDate = url.searchParams.get("start");
-            const endDate = url.searchParams.get("end");
+        if (path === "/archive/threads-in-range") {
+            const fromDate = url.searchParams.get("from");
+            const toDate = url.searchParams.get("to");
 
-            if (!startDate || !endDate) {
-                return new Response(JSON.stringify({ error: "start and end query parameters required" }), {
-                    status: 400,
-                    headers: { "Content-Type": "application/json" }
-                });
+            if (!fromDate || !toDate) {
+                return Response.json(
+                    { error: "Missing required query parameters: from and to (YYYY-MM-DD format)" },
+                    { status: 400, headers: corsHeaders }
+                );
             }
 
-            const files = getParquetFilesForRange(startDate, endDate);
-            return new Response(JSON.stringify({ files: files.map(f => ({ year: f.year, week: f.week, filename: f.filename })) }), {
-                headers: {
-                    "Content-Type": "application/json",
-                    "Cross-Origin-Opener-Policy": "same-origin",
-                    "Cross-Origin-Embedder-Policy": "require-corp",
-                }
-            });
-        }
-
-        // Serve individual conversation parquet files
-        const convMatch = path.match(/^\/api\/conversations\/year=(\d+)\/week=(\d+)\/(.+\.parquet)$/);
-        if (convMatch) {
-            const [, year, week, filename] = convMatch;
-            const filePath = join(conversationsPath, `year=${year}`, `week=${week}`, filename);
-            if (existsSync(filePath)) {
-                return new Response(Bun.file(filePath), {
-                    headers: {
-                        "Content-Type": "application/octet-stream",
-                        "Cross-Origin-Opener-Policy": "same-origin",
-                        "Cross-Origin-Embedder-Policy": "require-corp",
-                    }
-                });
+            // Validate date format
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(fromDate)) {
+                return Response.json(
+                    { error: `Invalid 'from' date format: ${fromDate}. Expected YYYY-MM-DD` },
+                    { status: 400, headers: corsHeaders }
+                );
             }
-            return new Response("Not Found", { status: 404 });
+            if (!dateRegex.test(toDate)) {
+                return Response.json(
+                    { error: `Invalid 'to' date format: ${toDate}. Expected YYYY-MM-DD` },
+                    { status: 400, headers: corsHeaders }
+                );
+            }
+
+            const available = getWeeksInRange(fromDate, toDate);
+            return Response.json({ available }, { headers: corsHeaders });
         }
 
-        if (path === "/api/available-weeks") {
-            const weeks = getAvailableWeeks();
-            return new Response(JSON.stringify({ weeks }), {
+        if (path === "/archive/threads") {
+            const yearParam = url.searchParams.get("year");
+            const weekParam = url.searchParams.get("week");
+
+            if (!yearParam || !weekParam) {
+                return Response.json(
+                    { error: "Missing required query parameters: year and week" },
+                    { status: 400, headers: corsHeaders }
+                );
+            }
+
+            const year = parseInt(yearParam, 10);
+            const week = parseInt(weekParam, 10);
+
+            if (isNaN(year)) {
+                return Response.json(
+                    { error: `Invalid year: ${yearParam}` },
+                    { status: 400, headers: corsHeaders }
+                );
+            }
+
+            if (isNaN(week) || week < 1 || week > 53) {
+                return Response.json(
+                    { error: `Invalid week: ${weekParam}. Week must be between 1 and 53` },
+                    { status: 400, headers: corsHeaders }
+                );
+            }
+
+            const threadsPath = getThreadsPath(year, week);
+            if (!existsSync(threadsPath)) {
+                return Response.json(
+                    { error: `File not found: ${threadsPath}` },
+                    { status: 404, headers: corsHeaders }
+                );
+            }
+
+            return new Response(Bun.file(threadsPath), {
                 headers: {
-                    "Content-Type": "application/json",
-                    "Cross-Origin-Opener-Policy": "same-origin",
-                    "Cross-Origin-Embedder-Policy": "require-corp",
+                    "Content-Type": "application/octet-stream",
+                    "Content-Disposition": "attachment; filename=\"threads.parquet\"",
+                    ...corsHeaders,
                 }
             });
         }
@@ -258,8 +299,7 @@ const server = Bun.serve({
             return new Response(file, {
                 headers: {
                     "Content-Type": contentType,
-                    "Cross-Origin-Opener-Policy": "same-origin",
-                    "Cross-Origin-Embedder-Policy": "require-corp",
+                    ...corsHeaders,
                 }
             });
         } catch (error) {
@@ -283,4 +323,11 @@ function getContentType(path) {
 
 console.log(`\nServer running at http://localhost:${server.port}`);
 console.log(`Serving parquet files from: ${basePath}`);
-console.log("Press Ctrl+C to stop");
+console.log("\nAPI endpoints:");
+console.log("  GET /archive/users              - Returns users.parquet");
+console.log("  GET /archive/channels           - Returns channels.parquet");
+console.log("  GET /archive/threads-in-range   - List available year/weeks");
+console.log("      ?from=YYYY-MM-DD&to=YYYY-MM-DD");
+console.log("  GET /archive/threads            - Returns threads.parquet");
+console.log("      ?year=YYYY&week=WW");
+console.log("\nPress Ctrl+C to stop");

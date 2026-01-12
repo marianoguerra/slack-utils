@@ -13,6 +13,7 @@
     "@types/bun": "latest"
   },
   "dependencies": {
-    "@duckdb/duckdb-wasm": "^1.33.1-dev16.0"
+    "@duckdb/duckdb-wasm": "^1.33.1-dev16.0",
+    "slack-archive-client": "file:../slack-archive-client"
   }
 }

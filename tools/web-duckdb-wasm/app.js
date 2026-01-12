@@ -1,4 +1,4 @@
-import * as duckdb from '@duckdb/duckdb-wasm';
+import { SlackArchiveClient, SlackArchiveDuckDB } from 'slack-archive-client';
 
 // Sample queries matching run-duckdb-sample-queries and more
 const SAMPLE_QUERIES = {
@@ -25,8 +25,8 @@ FROM channels`,
     SUM(CASE WHEN is_reply THEN 1 ELSE 0 END) as thread_replies,
     COUNT(DISTINCT user) as unique_users,
     COUNT(DISTINCT channel_name) as channels_with_messages
-FROM conversations`,
-        requires: ['conversations']
+FROM threads`,
+        requires: ['threads']
     },
 
     // Channel Stats
@@ -40,21 +40,21 @@ LIMIT 20`,
     },
     'channels-by-messages': {
         query: `SELECT channel_name, COUNT(*) as msg_count
-FROM conversations
+FROM threads
 GROUP BY channel_name
 ORDER BY msg_count DESC
 LIMIT 20`,
-        requires: ['conversations']
+        requires: ['threads']
     },
 
     // User Activity
     'active-users': {
         query: `SELECT user, COUNT(*) as msg_count
-FROM conversations
+FROM threads
 GROUP BY user
 ORDER BY msg_count DESC
 LIMIT 20`,
-        requires: ['conversations']
+        requires: ['threads']
     },
     'users-not-bots': {
         query: `SELECT id, name, real_name, display_name, email, tz
@@ -68,30 +68,30 @@ LIMIT 50`,
     // Time-based Stats
     'messages-by-week': {
         query: `SELECT year, week, COUNT(*) as msg_count
-FROM conversations
+FROM threads
 GROUP BY year, week
 ORDER BY year DESC, week DESC
 LIMIT 20`,
-        requires: ['conversations']
+        requires: ['threads']
     },
     'messages-by-date': {
         query: `SELECT date, COUNT(*) as msg_count
-FROM conversations
+FROM threads
 GROUP BY date
 ORDER BY date DESC
 LIMIT 30`,
-        requires: ['conversations']
+        requires: ['threads']
     },
 
     // Thread Activity
     'top-threads': {
         query: `SELECT channel_name, thread_ts, COUNT(*) as reply_count
-FROM conversations
+FROM threads
 WHERE is_reply
 GROUP BY channel_name, thread_ts
 ORDER BY reply_count DESC
 LIMIT 20`,
-        requires: ['conversations']
+        requires: ['threads']
     },
     'thread-stats': {
         query: `SELECT
@@ -100,37 +100,36 @@ LIMIT 20`,
     ROUND(AVG(reply_count), 2) as avg_replies_per_thread
 FROM (
     SELECT thread_ts, COUNT(*) as reply_count
-    FROM conversations
+    FROM threads
     WHERE is_reply
     GROUP BY thread_ts
 )`,
-        requires: ['conversations']
+        requires: ['threads']
     },
 
     // Content Search
     'search-text': {
         query: `SELECT channel_name, user, date, text
-FROM conversations
+FROM threads
 WHERE text LIKE '%KEYWORD%'
 ORDER BY date DESC
 LIMIT 50`,
-        requires: ['conversations']
+        requires: ['threads']
     },
     'recent-messages': {
         query: `SELECT channel_name, user, date,
     CASE WHEN LENGTH(text) > 100 THEN SUBSTR(text, 1, 100) || '...' ELSE text END as text
-FROM conversations
+FROM threads
 ORDER BY ts DESC
 LIMIT 30`,
-        requires: ['conversations']
+        requires: ['threads']
     }
 };
 
 class DuckDBApp {
     constructor() {
         this.db = null;
-        this.conn = null;
-        this.loadedTables = new Set();
+        this.client = null;
 
         this.init();
     }
@@ -156,7 +155,7 @@ class DuckDBApp {
             const { endDate } = this.getDateRangeForWeek(parseInt(toYear), parseInt(toWeek));
             document.getElementById('start-date').value = this.formatDate(startDate);
             document.getElementById('end-date').value = this.formatDate(endDate);
-            this.autoLoadConversations = true;
+            this.autoLoadThreads = true;
             return;
         }
 
@@ -167,7 +166,7 @@ class DuckDBApp {
         if (fromDate && toDate) {
             document.getElementById('start-date').value = fromDate;
             document.getElementById('end-date').value = toDate;
-            this.autoLoadConversations = true;
+            this.autoLoadThreads = true;
             return;
         }
 
@@ -200,21 +199,14 @@ class DuckDBApp {
 
     async initDuckDB() {
         try {
-            const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
-            const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+            // Create SlackArchiveClient pointing to the current server
+            this.client = new SlackArchiveClient({
+                baseUrl: window.location.origin
+            });
 
-            const worker_url = URL.createObjectURL(
-                new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' })
-            );
-
-            const worker = new Worker(worker_url);
-            const logger = new duckdb.ConsoleLogger();
-            this.db = new duckdb.AsyncDuckDB(logger, worker);
-
-            await this.db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-            URL.revokeObjectURL(worker_url);
-
-            this.conn = await this.db.connect();
+            // Create and initialize SlackArchiveDuckDB
+            this.db = new SlackArchiveDuckDB({ client: this.client });
+            await this.db.init();
 
             console.log('DuckDB initialized successfully');
         } catch (error) {
@@ -224,8 +216,8 @@ class DuckDBApp {
     }
 
     bindEvents() {
-        // Load conversations button
-        document.getElementById('load-conversations').addEventListener('click', () => this.loadConversations());
+        // Load threads button
+        document.getElementById('load-conversations').addEventListener('click', () => this.loadThreads());
 
         // Query controls
         document.getElementById('sample-select').addEventListener('change', (e) => this.selectSampleQuery(e));
@@ -244,43 +236,30 @@ class DuckDBApp {
     async loadInitialData() {
         // Load users and channels on startup
         await Promise.all([
-            this.loadFromAPI('users'),
-            this.loadFromAPI('channels')
+            this.loadTable('users'),
+            this.loadTable('channels')
         ]);
 
-        // Auto-load conversations if query params were provided
-        if (this.autoLoadConversations) {
-            await this.loadConversations();
+        // Auto-load threads if query params were provided
+        if (this.autoLoadThreads) {
+            await this.loadThreads();
         }
     }
 
-    async loadFromAPI(tableName) {
+    async loadTable(tableName) {
         const statusEl = document.getElementById(`${tableName}-status`);
         statusEl.textContent = 'Loading...';
         statusEl.className = 'status-value loading';
 
         try {
-            const response = await fetch(`/api/${tableName}.parquet`);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+            let rowCount;
+            if (tableName === 'users') {
+                rowCount = await this.db.loadUsers();
+            } else if (tableName === 'channels') {
+                rowCount = await this.db.loadChannels();
             }
 
-            const arrayBuffer = await response.arrayBuffer();
-            const fileName = `${tableName}.parquet`;
-            await this.db.registerFileBuffer(fileName, new Uint8Array(arrayBuffer));
-
-            // Drop existing table if exists
-            await this.conn.query(`DROP TABLE IF EXISTS ${tableName}`);
-
-            // Create table from parquet
-            await this.conn.query(`CREATE TABLE ${tableName} AS SELECT * FROM parquet_scan('${fileName}')`);
-
-            this.loadedTables.add(tableName);
-
-            const countResult = await this.conn.query(`SELECT COUNT(*) as count FROM ${tableName}`);
-            const count = countResult.toArray()[0].count;
-
-            statusEl.textContent = `${count} rows`;
+            statusEl.textContent = `${rowCount} rows`;
             statusEl.className = 'status-value loaded';
         } catch (error) {
             console.error(`Failed to load ${tableName}:`, error);
@@ -289,7 +268,7 @@ class DuckDBApp {
         }
     }
 
-    async loadConversations() {
+    async loadThreads() {
         const startDate = document.getElementById('start-date').value;
         const endDate = document.getElementById('end-date').value;
 
@@ -307,62 +286,25 @@ class DuckDBApp {
         this.hideLoadError();
 
         try {
-            // Get list of files for the date range
-            const listResponse = await fetch(`/api/conversations?start=${startDate}&end=${endDate}`);
-            if (!listResponse.ok) {
-                throw new Error(`HTTP ${listResponse.status}`);
-            }
+            let partitionCount = 0;
 
-            const { files } = await listResponse.json();
+            const rowCount = await this.db.loadThreads(startDate, endDate, (progress) => {
+                partitionCount = progress.total;
+                statusEl.textContent = progress.message;
+            });
 
-            if (files.length === 0) {
+            if (rowCount === 0) {
                 statusEl.textContent = 'No data for range';
                 statusEl.className = 'status-value';
-                loadBtn.disabled = false;
-                return;
-            }
-
-            // Load each parquet file
-            const fileNames = [];
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                statusEl.textContent = `Loading ${i + 1}/${files.length}...`;
-
-                const url = `/api/conversations/year=${file.year}/week=${String(file.week).padStart(2, '0')}/${file.filename}`;
-                const response = await fetch(url);
-                if (!response.ok) {
-                    throw new Error(`Failed to load ${file.filename}`);
-                }
-
-                const arrayBuffer = await response.arrayBuffer();
-                const fileName = `conv_${file.year}_${file.week}_${file.filename}`;
-                await this.db.registerFileBuffer(fileName, new Uint8Array(arrayBuffer));
-                fileNames.push(fileName);
-            }
-
-            // Drop existing table if exists
-            await this.conn.query('DROP TABLE IF EXISTS conversations');
-
-            // Create table from all parquet files using UNION ALL
-            if (fileNames.length === 1) {
-                await this.conn.query(`CREATE TABLE conversations AS SELECT * FROM parquet_scan('${fileNames[0]}')`);
             } else {
-                const unions = fileNames.map(f => `SELECT * FROM parquet_scan('${f}')`).join(' UNION ALL ');
-                await this.conn.query(`CREATE TABLE conversations AS ${unions}`);
+                statusEl.textContent = `${rowCount} messages (${partitionCount} files)`;
+                statusEl.className = 'status-value loaded';
             }
-
-            this.loadedTables.add('conversations');
-
-            const countResult = await this.conn.query('SELECT COUNT(*) as count FROM conversations');
-            const count = countResult.toArray()[0].count;
-
-            statusEl.textContent = `${count} messages (${files.length} files)`;
-            statusEl.className = 'status-value loaded';
         } catch (error) {
-            console.error('Failed to load conversations:', error);
+            console.error('Failed to load threads:', error);
             statusEl.textContent = 'Error';
             statusEl.className = 'status-value error';
-            this.showLoadError(`Failed to load conversations: ${error.message}`);
+            this.showLoadError(`Failed to load threads: ${error.message}`);
         } finally {
             loadBtn.disabled = false;
         }
@@ -376,7 +318,8 @@ class DuckDBApp {
         if (!sample) return;
 
         // Check if required tables are loaded
-        const missing = sample.requires.filter(t => !this.loadedTables.has(t));
+        const loadedTables = this.db.getLoadedTables();
+        const missing = sample.requires.filter(t => !loadedTables.has(t));
         if (missing.length > 0) {
             this.showError(`This query requires: ${missing.join(', ')}. Please load the required data first.`);
         }
@@ -397,14 +340,8 @@ class DuckDBApp {
         this.hideError();
 
         try {
-            const startTime = performance.now();
-            const result = await this.conn.query(query);
-            const endTime = performance.now();
-
-            const rows = result.toArray();
-            const schema = result.schema;
-
-            this.displayResults(rows, schema, endTime - startTime);
+            const result = await this.db.query(query);
+            this.displayResults(result.rows, result.schema, result.executionTimeMs);
         } catch (error) {
             console.error('Query failed:', error);
             this.showError(error.message);
@@ -433,7 +370,7 @@ class DuckDBApp {
 
         // Build header
         const headerRow = document.createElement('tr');
-        for (const field of schema.fields) {
+        for (const field of schema) {
             const th = document.createElement('th');
             th.textContent = field.name;
             headerRow.appendChild(th);
@@ -443,7 +380,7 @@ class DuckDBApp {
         // Build body
         for (const row of rows) {
             const tr = document.createElement('tr');
-            for (const field of schema.fields) {
+            for (const field of schema) {
                 const td = document.createElement('td');
                 const value = row[field.name];
                 td.textContent = value === null ? 'NULL' : String(value);
