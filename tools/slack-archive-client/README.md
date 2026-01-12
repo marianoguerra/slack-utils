@@ -1,110 +1,172 @@
-# Slack Archive Client
+# slack-archive-client
 
-JavaScript/TypeScript client library for the `slack-archive-server` HTTP API.
+JavaScript/TypeScript client library for `slack-archive-server`.
+
+## Features
+
+- **SlackArchiveClient**: Fetch parquet files and search via the HTTP API
+- **SlackArchiveDuckDB**: Load parquet files into DuckDB WASM for in-browser SQL queries
+- Full TypeScript support with type definitions
+- Progress callbacks for data loading operations
+- Works in modern browsers and Node.js/Bun/Deno
 
 ## Installation
 
 ```bash
-# Using bun
 bun add slack-archive-client
 
-# Or link locally during development
-cd tools/slack-archive-client
-bun install
-bun run build
-```
-
-## Building
-
-```bash
-# Build ESM module and TypeScript declarations
-bun run dist
-
-# Or step by step
-bun run build        # Builds both JS and type declarations
-bun run clean        # Remove dist folder
-bun run typecheck    # Check types without emitting
+# For DuckDB support:
+bun add @duckdb/duckdb-wasm
 ```
 
 ## Usage
 
+### Basic API Client
+
 ```typescript
-import { SlackArchiveClient } from 'slack-archive-client';
+import { SlackArchiveClient } from "slack-archive-client";
 
 const client = new SlackArchiveClient({
-  baseUrl: 'http://localhost:8080'
+  baseUrl: "http://localhost:8080",
 });
+
+// Fetch parquet files as ArrayBuffer
+const usersBuffer = await client.getUsers();
+const channelsBuffer = await client.getChannels();
+
+// Get available thread partitions for a date range
+const { available } = await client.getThreadsInRange("2024-01-01", "2024-03-31");
+// [{ year: 2024, week: 1 }, { year: 2024, week: 2 }, ...]
+
+// Fetch threads for a specific week
+const threadsBuffer = await client.getThreads(2024, 3);
+
+// Search messages (requires Meilisearch configured on server)
+const results = await client.search("deployment", 20);
 
 // Check server connectivity
 const isUp = await client.ping();
+```
 
-// Get available thread partitions in a date range
-const { available } = await client.getThreadsInRange('2024-01-01', '2024-12-31');
-console.log('Available weeks:', available);
+### DuckDB Client (In-Browser SQL)
 
-// Download parquet files as ArrayBuffer
-const usersParquet = await client.getUsers();
-const channelsParquet = await client.getChannels();
-const threadsParquet = await client.getThreads(2024, 3); // year, week
+```typescript
+import { SlackArchiveClient, SlackArchiveDuckDB } from "slack-archive-client";
 
-// Search messages (requires Meilisearch configured on server)
-const results = await client.search('deployment', 20);
-console.log('Hits:', results.hits);
-console.log('Processing time:', results.processing_time_ms, 'ms');
+const client = new SlackArchiveClient({ baseUrl: "http://localhost:8080" });
+const db = new SlackArchiveDuckDB({ client });
+
+// Initialize DuckDB WASM
+await db.init();
+
+// Load all data with progress tracking
+await db.loadAll("2024-01-01", "2024-03-31", (progress) => {
+  console.log(`${progress.phase}: ${progress.current}/${progress.total}`);
+});
+
+// Run SQL queries
+const result = await db.query<{ channel_name: string; msg_count: bigint }>(`
+  SELECT channel_name, COUNT(*) as msg_count
+  FROM threads
+  GROUP BY channel_name
+  ORDER BY msg_count DESC
+  LIMIT 10
+`);
+
+console.log(result.rows);
+console.log(`Query took ${result.executionTimeMs}ms`);
+
+// Clean up
+await db.close();
+```
+
+### Loading Tables Separately
+
+```typescript
+await db.init();
+
+// Load individual tables
+const userCount = await db.loadUsers();
+const channelCount = await db.loadChannels();
+const threadCount = await db.loadThreads("2024-01-01", "2024-03-31");
+
+// Check what's loaded
+db.getLoadedTables();        // Set { "users", "channels", "threads" }
+db.isTableLoaded("threads"); // true
+
+// Get row counts
+const info = await db.getTableInfo();
+// [{ name: "users", rowCount: 150 }, ...]
+
+// Drop and reload
+await db.dropTable("threads");
+await db.loadThreads("2024-06-01", "2024-06-30");
 ```
 
 ## API Reference
 
-### `SlackArchiveClient`
-
-#### Constructor
+### SlackArchiveClient
 
 ```typescript
-new SlackArchiveClient(options: SlackArchiveClientOptions)
+new SlackArchiveClient(options: {
+  baseUrl: string;
+  fetch?: typeof fetch;
+})
 ```
 
-Options:
-- `baseUrl` (required): Base URL of the slack-archive-server
-- `fetch` (optional): Custom fetch implementation
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `getUsers()` | `Promise<ArrayBuffer>` | Fetch `users.parquet` |
+| `getChannels()` | `Promise<ArrayBuffer>` | Fetch `channels.parquet` |
+| `getThreadsInRange(from, to)` | `Promise<{ available: YearWeek[] }>` | List available partitions |
+| `getThreads(year, week)` | `Promise<ArrayBuffer>` | Fetch `threads.parquet` |
+| `search(query, limit?)` | `Promise<SearchResponse>` | Search via Meilisearch |
+| `ping()` | `Promise<boolean>` | Check server connectivity |
 
-#### Methods
-
-| Method | Description | Returns |
-|--------|-------------|---------|
-| `ping()` | Check if server is reachable | `Promise<boolean>` |
-| `getUsers()` | Download users.parquet | `Promise<ArrayBuffer>` |
-| `getChannels()` | Download channels.parquet | `Promise<ArrayBuffer>` |
-| `getThreadsInRange(from, to)` | List available year/week partitions | `Promise<ThreadsInRangeResponse>` |
-| `getThreads(year, week)` | Download threads.parquet for a week | `Promise<ArrayBuffer>` |
-| `search(query, limit?)` | Search messages via Meilisearch | `Promise<SearchResponse>` |
-
-### Error Handling
-
-The client throws `SlackArchiveError` for HTTP errors:
+### SlackArchiveDuckDB
 
 ```typescript
-import { SlackArchiveClient, SlackArchiveError } from 'slack-archive-client';
+new SlackArchiveDuckDB(options: {
+  client: SlackArchiveClient;
+  bundles?: DuckDBBundles;
+})
+```
 
-try {
-  await client.getUsers();
-} catch (error) {
-  if (error instanceof SlackArchiveError) {
-    console.log('Status code:', error.statusCode);
-    console.log('Server message:', error.serverError);
-  }
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `init()` | `Promise<void>` | Initialize DuckDB WASM |
+| `loadUsers(onProgress?)` | `Promise<number>` | Load into `users` table |
+| `loadChannels(onProgress?)` | `Promise<number>` | Load into `channels` table |
+| `loadThreads(from, to, onProgress?)` | `Promise<number>` | Load into `threads` table |
+| `loadAll(from, to, onProgress?)` | `Promise<{ users, channels, threads }>` | Load all tables |
+| `query<T>(sql)` | `Promise<QueryResult<T>>` | Execute SQL |
+| `getLoadedTables()` | `Set<TableName>` | Get loaded table names |
+| `isTableLoaded(name)` | `boolean` | Check if table loaded |
+| `getTableInfo()` | `Promise<LoadedTableInfo[]>` | Get table row counts |
+| `dropTable(name)` | `Promise<void>` | Drop a table |
+| `close()` | `Promise<void>` | Clean up resources |
+
+### Types
+
+```typescript
+interface QueryResult<T> {
+  rows: T[];
+  schema: Array<{ name: string; type: string }>;
+  executionTimeMs: number;
 }
-```
 
-## Types
+interface LoadProgress {
+  phase: "users" | "channels" | "threads";
+  current: number;
+  total: number;
+  message: string;
+}
 
-```typescript
+type TableName = "users" | "channels" | "threads";
+
 interface YearWeek {
   year: number;
   week: number;
-}
-
-interface ThreadsInRangeResponse {
-  available: YearWeek[];
 }
 
 interface SearchResponse {
@@ -112,70 +174,68 @@ interface SearchResponse {
   processing_time_ms: number;
   estimated_total_hits?: number;
 }
-
-interface IndexEntry {
-  id: string;
-  ts: string;
-  date: string;
-  text: string;
-  users: IndexUser[];
-  channel: IndexChannel;
-}
-
-interface IndexUser {
-  id: string;
-  name: string;
-}
-
-interface IndexChannel {
-  id: string;
-  name: string;
-}
 ```
 
-## Examples
-
-### Browser Smoke Test
-
-Open `examples/index.html` in a browser to run a visual smoke test against a running server. Make sure to:
-
-1. Build the client first: `bun run dist`
-2. Start the slack-archive-server
-3. Open the HTML file and check the browser console for detailed results
-
-### Using with DuckDB-WASM
-
-The parquet files can be loaded directly into DuckDB-WASM:
+### Error Handling
 
 ```typescript
-import { SlackArchiveClient } from 'slack-archive-client';
-import * as duckdb from '@duckdb/duckdb-wasm';
+import { SlackArchiveClient, SlackArchiveError, DuckDBClientError } from "slack-archive-client";
 
-const client = new SlackArchiveClient({ baseUrl: 'http://localhost:8080' });
+try {
+  await client.getUsers();
+} catch (error) {
+  if (error instanceof SlackArchiveError) {
+    console.log("Status:", error.statusCode);
+    console.log("Message:", error.serverError);
+  }
+}
 
-// Fetch parquet data
-const usersBuffer = await client.getUsers();
-
-// Register with DuckDB
-await db.registerFileBuffer('users.parquet', new Uint8Array(usersBuffer));
-
-// Query
-const result = await conn.query(`
-  SELECT name, real_name, email
-  FROM 'users.parquet'
-  WHERE is_bot = false
-`);
+try {
+  await db.query("SELECT * FROM nonexistent");
+} catch (error) {
+  if (error instanceof DuckDBClientError) {
+    console.log("DuckDB error:", error.message);
+  }
+}
 ```
+
+## Server Compatibility
+
+Works with both:
+
+- **slack-archive-server** (Rust) - Production HTTP server
+- **web-duckdb-wasm/serve.js** (Bun) - Development server
+
+API endpoints:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /archive/users` | Returns `users.parquet` |
+| `GET /archive/channels` | Returns `channels.parquet` |
+| `GET /archive/threads-in-range?from=...&to=...` | List partitions |
+| `GET /archive/threads?year=...&week=...` | Returns `threads.parquet` |
+| `POST /archive/search?query=...&limit=...` | Meilisearch query |
 
 ## Development
 
 ```bash
-# Install dependencies
-bun install
+just install     # Install dependencies
+just typecheck   # Type check
+just build       # Build library
+just check       # typecheck + build
 
-# Type check
-bun run typecheck
+# Test with web UI
+just serve-test-ui /path/to/parquet/files
 
-# Build
-bun run dist
+# Test with slack-archive-server
+just serve-with-server /path/to/parquet/files
 ```
+
+## Requirements
+
+- Modern JavaScript runtime (ES2022+)
+- `@duckdb/duckdb-wasm >= 1.32.0` for DuckDB features
+
+## License
+
+MIT
