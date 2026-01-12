@@ -1,75 +1,139 @@
-# Web DuckDB Query Tool
+# web-duckdb-wasm
 
-A browser-based SQL query tool for Slack parquet exports using DuckDB-WASM.
+Browser-based SQL query tool for Slack parquet exports using DuckDB WASM.
 
 ## Features
 
+- Run SQL queries on Slack data entirely in the browser (WebAssembly)
 - Auto-loads users and channels on startup
-- Date range picker to load conversation data (defaults to last 2 months)
-- Run SQL queries against conversations, users, and channels
+- Date range picker for loading conversation threads
 - Predefined sample queries for common statistics
-- All queries run locally in WebAssembly - no data leaves your browser
+- Compatible with both local dev server and `slack-archive-server`
 
-## Two Server Modes
-
-### 1. API Server (`serve.js`)
-
-Backend provides API endpoints to list and serve parquet files.
+## Quick Start
 
 ```bash
-bun run serve -- --path /path/to/parquet/files
+# Install dependencies
+bun install
+
+# Start dev server (requires parquet files)
+just serve /path/to/parquet/files
+
+# Or with hot reload
+just dev /path/to/parquet/files
 ```
 
 Open http://localhost:3000
+
+## Architecture
+
+This app uses:
+- **slack-archive-client** - Fetches parquet files from the server
+- **SlackArchiveDuckDB** - Loads parquet into DuckDB WASM for SQL queries
+- **@duckdb/duckdb-wasm** - In-browser SQL engine
+
+The app is bundled with `slack-archive-client`, but `@duckdb/duckdb-wasm` is loaded at runtime via import maps.
+
+## Import Maps
+
+Since `@duckdb/duckdb-wasm` is an external dependency, you need to provide it via an import map. The bundled `app.js` contains:
+
+```javascript
+import * as duckdb from "@duckdb/duckdb-wasm";
+```
+
+To resolve this import in the browser, add an import map to your HTML:
+
+```html
+<script type="importmap">
+{
+  "imports": {
+    "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.32.0/+esm"
+  }
+}
+</script>
+<script type="module" src="app.js"></script>
+```
+
+Or use a local path if you've installed the package:
+
+```html
+<script type="importmap">
+{
+  "imports": {
+    "@duckdb/duckdb-wasm": "./node_modules/@duckdb/duckdb-wasm/dist/duckdb-browser.mjs"
+  }
+}
+</script>
+```
+
+The dev servers (`serve.js`, `static-file-server.js`) bundle the app with dependencies included, so import maps are only needed for standalone deployments.
+
+## Server Modes
+
+### 1. API Server (`serve.js`) - Recommended
+
+Provides API endpoints compatible with `slack-archive-server`:
+
+```bash
+just serve /path/to/parquet/files
+# or
+bun serve.js --path /path/to/parquet/files --port 3000
+```
+
+API endpoints:
+| Endpoint | Description |
+|----------|-------------|
+| `GET /archive/users` | Returns `users.parquet` |
+| `GET /archive/channels` | Returns `channels.parquet` |
+| `GET /archive/threads-in-range?from=...&to=...` | List available partitions |
+| `GET /archive/threads?year=...&week=...` | Returns `threads.parquet` |
 
 ### 2. Static File Server (`static-file-server.js`)
 
-Simple static file server - frontend discovers files by trying to fetch them based on Hive partition structure (ignoring 404s). Useful for deploying to any static file host.
+Simple static server for pre-built deployments:
 
 ```bash
-bun run serve-static -- --path /path/to/parquet/files
+just serve-static /path/to/parquet/files
+# or
+bun static-file-server.js --path /path/to/parquet/files
 ```
 
-Open http://localhost:3000
+### 3. With slack-archive-server
 
-## Usage
-
-### Install dependencies
+Test the app with the Rust server:
 
 ```bash
-cd tools/web-duckdb-wasm
-bun install
+just serve-with-server /path/to/parquet/files
 ```
 
-### Start a server
+This builds the app and starts `slack-archive-server` with this directory as static assets.
 
-```bash
-# API server (recommended for development)
-bun run serve -- --path ../..
-
-# Static file server (for static hosting scenarios)
-bun run serve-static -- --path ../..
-```
-
-### CLI Options
-
-Both servers accept the same options:
+## CLI Options
 
 ```
 Options:
-  -p, --path <path>   Base path containing parquet files (default: current directory)
+  -p, --path <path>   Base path containing parquet files (default: .)
   --port <port>       Server port (default: 3000)
-  -h, --help          Show this help message
-
-Required files in base path:
-  - users.parquet
-  - channels.parquet
-  - conversations/    (directory with year=*/week=*/*.parquet structure)
+  -h, --help          Show help
 ```
 
-### Export data first
+## Required File Structure
 
-Before using the web tool, export your Slack data in parquet format:
+```
+/path/to/files/
+├── users.parquet
+├── channels.parquet
+└── conversations/
+    └── year=2024/
+        ├── week=01/
+        │   └── threads.parquet
+        ├── week=02/
+        │   └── threads.parquet
+        └── ...
+```
+
+Export data with:
 
 ```bash
 slack-utils export-users --format parquet
@@ -77,122 +141,78 @@ slack-utils export-channels --format parquet
 slack-utils export-conversations --format parquet
 ```
 
-### Run queries
-
-1. **Users and Channels** load automatically on page load
-2. **Conversations**: Select a date range and click "Load Conversations"
-3. Use the dropdown to select a predefined sample query, or write your own SQL
-
-Tables available:
-- `users` - User data
-- `channels` - Channel data
-- `conversations` - Message data (after loading)
-
-Press `Ctrl+Enter` (or `Cmd+Enter` on Mac) to run the query.
-
 ## URL Query Parameters
 
-You can pre-fill the date range and auto-load conversations by passing query parameters in the URL. This is useful for bookmarking specific time ranges or sharing links.
+Pre-fill date range and auto-load data via URL:
 
-### Week-based Parameters
-
-Load data by ISO week number:
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `fromYear` | Yes | Start year (e.g., `2024`) |
-| `fromWeek` | Yes | Start ISO week number (1-53) |
-| `toYear` | No | End year (defaults to `fromYear`) |
-| `toWeek` | No | End ISO week number (defaults to `fromWeek`) |
-
-**Examples:**
+### By Week
 
 ```
-# Load a single week (week 42 of 2024)
 ?fromYear=2024&fromWeek=42
-
-# Load multiple weeks in the same year (weeks 40-45 of 2024)
 ?fromYear=2024&fromWeek=40&toWeek=45
-
-# Load weeks across year boundary (week 50 of 2024 to week 2 of 2025)
 ?fromYear=2024&fromWeek=50&toYear=2025&toWeek=2
 ```
 
-### Date-based Parameters
-
-Load data by specific dates:
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `fromDate` | Yes | Start date in `YYYY-MM-DD` format |
-| `toDate` | Yes | End date in `YYYY-MM-DD` format |
-
-**Examples:**
+### By Date
 
 ```
-# Load October 2024
 ?fromDate=2024-10-01&toDate=2024-10-31
-
-# Load Q4 2024
-?fromDate=2024-10-01&toDate=2024-12-31
 ```
 
-### Behavior
+When parameters are present, conversations auto-load after users/channels.
 
-When query parameters are present:
-1. The date inputs are pre-filled with the calculated date range
-2. After users and channels finish loading, conversations are automatically loaded
-3. If no query parameters are provided, the date range defaults to the last 2 months (no auto-load)
+## Available Tables
+
+| Table | Description |
+|-------|-------------|
+| `users` | User profiles (auto-loaded) |
+| `channels` | Channel metadata (auto-loaded) |
+| `threads` | Messages and replies (load via date range) |
 
 ## Sample Queries
 
-The tool includes predefined queries for:
+The dropdown includes queries for:
 
-### Overview Stats
-- Total users (bots, admins count)
-- Total channels (archived, private count)
-- Total messages overview
+- **Overview**: User/channel/message counts
+- **Channels**: Top by members, top by messages
+- **Users**: Most active, human users list
+- **Time**: Messages by week/date
+- **Threads**: Top threads, reply statistics
+- **Search**: Keyword search, recent messages
 
-### Channel Stats
-- Top channels by member count
-- Top channels by message count
+Press `Ctrl+Enter` to run queries.
 
-### User Activity
-- Most active users
-- List of human (non-bot) users
+## Development
 
-### Time-based Stats
-- Messages by week
-- Messages by date
-
-### Thread Activity
-- Top threads by reply count
-- Thread statistics
-
-### Content Search
-- Search messages by keyword
-- Recent messages
-
-## File Structure
-
-The static file mode expects the following Hive partition structure:
-
+```bash
+just install        # Install dependencies
+just build          # Build minified bundle
+just serve [path]   # Start dev server
+just dev [path]     # Dev server with hot reload
+just serve-static   # Static file server
+just serve-with-server [path]  # Test with slack-archive-server
 ```
-/users.parquet
-/channels.parquet
-/conversations/
-  year=2024/
-    week=01/
-      threads.parquet
-    week=02/
-      threads.parquet
-  year=2025/
-    week=01/
-      threads.parquet
-```
+
+## Standalone Deployment
+
+To deploy without the dev server:
+
+1. Build the app:
+   ```bash
+   just build
+   ```
+
+2. Copy these files to your web server:
+   - `dist/app.js` - Bundled application
+   - `index.html` - Main page (add import map, see above)
+   - `style.css` - Styles
+
+3. Configure your server to:
+   - Serve static files
+   - Implement the `/archive/*` API endpoints
+   - Set CORS headers: `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`
 
 ## Requirements
 
-- Modern browser with WebAssembly support
-- Bun (for the development servers)
-- Parquet files exported from slack-utils
+- Modern browser with WebAssembly and ES modules support
+- Bun (for development servers)

@@ -94,6 +94,14 @@
       border-radius: 3px;
     }
   </style>
+  <!-- Import map for @duckdb/duckdb-wasm (only needed if using SlackArchiveDuckDB) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.32.0/+esm"
+    }
+  }
+  </script>
 </head>
 <body>
   <h1>Slack Archive Client - Smoke Test</h1>
