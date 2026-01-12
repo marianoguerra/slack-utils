@@ -136,6 +136,46 @@ h2 {
     border-color: var(--primary);
 }
 
+/* Cache Controls */
+.cache-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.cache-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.cache-toggle input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+.cache-stats {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.cache-stats.active {
+    color: var(--success);
+}
+
+button.small {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
 /* Query Section */
 .sample-queries {
     margin-bottom: 1rem;

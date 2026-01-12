@@ -1,4 +1,4 @@
-import { SlackArchiveClient, SlackArchiveDuckDB } from 'slack-archive-client';
+import { SlackArchiveClient, SlackArchiveDuckDB, IndexedDBCache, createCachingFetch } from 'slack-archive-client';
 
 // Sample queries matching run-duckdb-sample-queries and more
 const SAMPLE_QUERIES = {
@@ -130,11 +130,16 @@ class DuckDBApp {
     constructor(options = {}) {
         this.db = null;
         this.client = null;
+        this.cache = null;
         // Mode can be set via: options, global variable, or URL param
         this.mode = options.mode
             || window.SLACK_ARCHIVE_MODE
             || new URLSearchParams(window.location.search).get('mode')
             || 'api';
+
+        // Cache can be enabled via options or localStorage
+        this.cacheEnabled = options.cache
+            ?? (localStorage.getItem('slack-archive-cache') === 'true');
 
         this.init();
     }
@@ -204,17 +209,41 @@ class DuckDBApp {
 
     async initDuckDB() {
         try {
+            let fetchFn = fetch;
+
+            // Set up caching if enabled
+            if (this.cacheEnabled) {
+                this.cache = new IndexedDBCache();
+                fetchFn = createCachingFetch(fetch, this.cache, {
+                    ttl: {
+                        '**/users.parquet': 24 * 60 * 60 * 1000,      // 24 hours
+                        '**/channels.parquet': 24 * 60 * 60 * 1000,   // 24 hours
+                        '**/conversations/**': 7 * 24 * 60 * 60 * 1000, // 7 days (immutable)
+                    },
+                    maxSize: 500 * 1024 * 1024, // 500MB
+                    onCacheEvent: (event) => {
+                        if (event.type === 'hit') {
+                            console.log(`Cache HIT: ${event.url} (age: ${Math.round(event.age / 1000)}s)`);
+                        } else if (event.type === 'miss') {
+                            console.log(`Cache MISS: ${event.url}`);
+                        }
+                        this.updateCacheStats();
+                    },
+                });
+            }
+
             // Create SlackArchiveClient with the configured mode
             this.client = new SlackArchiveClient({
                 baseUrl: window.location.origin,
-                mode: this.mode
+                mode: this.mode,
+                fetch: fetchFn,
             });
 
             // Create and initialize SlackArchiveDuckDB
             this.db = new SlackArchiveDuckDB({ client: this.client });
             await this.db.init();
 
-            console.log(`DuckDB initialized successfully (mode: ${this.mode})`);
+            console.log(`DuckDB initialized successfully (mode: ${this.mode}, cache: ${this.cacheEnabled})`);
         } catch (error) {
             console.error('Failed to initialize DuckDB:', error);
             this.showLoadError(`Failed to initialize DuckDB: ${error.message}`);
@@ -237,6 +266,64 @@ class DuckDBApp {
                 this.runQuery();
             }
         });
+
+        // Cache controls
+        this.bindCacheEvents();
+    }
+
+    bindCacheEvents() {
+        const cacheToggle = document.getElementById('cache-enabled');
+        const clearCacheBtn = document.getElementById('clear-cache');
+
+        // Initialize checkbox state
+        cacheToggle.checked = this.cacheEnabled;
+
+        // Toggle cache on/off
+        cacheToggle.addEventListener('change', async (e) => {
+            const enabled = e.target.checked;
+            localStorage.setItem('slack-archive-cache', String(enabled));
+
+            // Show message about reload requirement
+            if (enabled !== this.cacheEnabled) {
+                this.showLoadError('Cache setting changed. Please reload the page to apply.');
+            }
+        });
+
+        // Clear cache button
+        clearCacheBtn.addEventListener('click', async () => {
+            if (this.cache) {
+                await this.cache.clear();
+                this.updateCacheStats();
+                console.log('Cache cleared');
+            }
+        });
+
+        // Show/hide clear button and update stats
+        if (this.cacheEnabled) {
+            clearCacheBtn.classList.remove('hidden');
+            this.updateCacheStats();
+        }
+    }
+
+    async updateCacheStats() {
+        const statsEl = document.getElementById('cache-stats');
+        if (!this.cache) {
+            statsEl.textContent = '';
+            statsEl.classList.remove('active');
+            return;
+        }
+
+        try {
+            const size = await this.cache.size();
+            const keys = await this.cache.keys();
+            const sizeMB = (size / 1024 / 1024).toFixed(2);
+            statsEl.textContent = `${keys.length} files, ${sizeMB} MB`;
+            statsEl.classList.add('active');
+        } catch (error) {
+            console.error('Failed to get cache stats:', error);
+            statsEl.textContent = 'Error reading cache';
+            statsEl.classList.remove('active');
+        }
     }
 
     async loadInitialData() {
