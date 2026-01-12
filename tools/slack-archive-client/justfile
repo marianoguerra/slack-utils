@@ -1,0 +1,77 @@
+# slack-archive-client justfile
+
+# Default recipe to list available targets
+default:
+    @just --list
+
+# Install dependencies
+install:
+    bun install
+
+# Build the library (ESM + TypeScript declarations)
+build:
+    bun run build
+
+# Build types only
+build-types:
+    bun run build:types
+
+# Type check without emitting
+typecheck:
+    bun run typecheck
+
+# Clean dist folder
+clean:
+    bun run clean
+
+# Full rebuild (clean + install + build)
+rebuild: clean install build
+
+# Run all checks (typecheck + build)
+check: typecheck build
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Development Server (web-duckdb-wasm)
+# ─────────────────────────────────────────────────────────────────────────────
+
+web_app_dir := "../web-duckdb-wasm"
+
+# Start the web-duckdb-wasm dev server for testing the client
+# Requires parquet files at the specified path
+serve-test-ui path="." port="3000":
+    cd {{web_app_dir}} && bun install && bun serve.js --path {{path}} --port {{port}}
+
+# Start the web-duckdb-wasm dev server with hot reload
+dev-test-ui path="." port="3000":
+    cd {{web_app_dir}} && bun install && bun --hot serve.js --path {{path}} --port {{port}}
+
+# Build the web-duckdb-wasm app
+build-test-ui:
+    cd {{web_app_dir}} && bun install && bun run build
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Testing with slack-archive-server
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Start slack-archive-server with web-duckdb-wasm as static assets
+# This tests the full stack: server API + DuckDB client + web UI
+serve-with-server base_path="." port="8080":
+    #!/usr/bin/env bash
+    set -e
+    cd {{web_app_dir}} && bun install && bun run build
+    CONFIG=$(mktemp --suffix=.toml)
+    cat > "$CONFIG" <<EOF
+    [server]
+    host = "127.0.0.1"
+    port = {{port}}
+    static_assets = "$(pwd)/{{web_app_dir}}"
+
+    [slack-archive]
+    base_path = "{{base_path}}"
+    EOF
+    echo "Starting slack-archive-server on http://127.0.0.1:{{port}}"
+    echo "Archive base path: {{base_path}}"
+    echo "Web UI: http://127.0.0.1:{{port}}/index.html"
+    echo ""
+    trap "rm -f $CONFIG" EXIT
+    cd ../.. && cargo run --features server --bin slack-archive-server -- serve "$CONFIG"
