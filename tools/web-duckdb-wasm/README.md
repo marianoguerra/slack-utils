@@ -196,6 +196,7 @@ just serve [path]   # Start dev server
 just dev [path]     # Dev server with hot reload
 just serve-static   # Static file server
 just serve-with-server [path]  # Test with slack-archive-server
+just export-static-ui [path]   # Export for static hosting
 ```
 
 ## Standalone Deployment
@@ -223,6 +224,21 @@ To deploy with a backend that implements the `/archive/*` API:
 
 To deploy to static hosting (GitHub Pages, S3, etc.) without any backend:
 
+**Option 1: Use the export command (recommended)**
+
+```bash
+just export-static-ui /path/to/parquet/files
+```
+
+This creates `dist/static-ui/` with everything ready to deploy:
+- `index.html` - Main page
+- `app.js` - Bundled application
+- `style.css` - Styles
+- `users.parquet`, `channels.parquet` - User and channel data
+- `conversations/` - Thread data partitioned by year/week
+
+**Option 2: Manual setup**
+
 1. Build the app:
    ```bash
    just build
@@ -239,11 +255,10 @@ To deploy to static hosting (GitHub Pages, S3, etc.) without any backend:
      conversations/year=YYYY/week=WW/threads.parquet
      ```
 
-3. Ensure your static host:
-   - Supports HEAD requests (for file probing)
-   - Sets CORS headers if accessed cross-origin
-
-The static mode sets `window.SLACK_ARCHIVE_MODE = 'static'` which tells the client to fetch files directly instead of using API endpoints.
+**Notes:**
+- Ensure your static host supports HEAD requests (for file probing)
+- Set CORS headers if accessed cross-origin
+- The static mode sets `window.SLACK_ARCHIVE_MODE = 'static'` which tells the client to fetch files directly instead of using API endpoints
 
 ## Requirements
 
