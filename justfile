@@ -128,57 +128,7 @@ query-duckdb-channels query parquet=channels_parquet:
 
 # Run sample DuckDB queries to show useful stats and summaries
 run-duckdb-sample-queries:
-    #!/usr/bin/env bash
-    set -e
-    DUCKDB="cargo run --features duckdb --bin slack-utils-duckdb -- query"
-
-    echo "=== Overview Stats ==="
-    echo ""
-    echo "--- Total Users ---"
-    $DUCKDB "SELECT COUNT(*) as total_users, SUM(CASE WHEN is_bot THEN 1 ELSE 0 END) as bots, SUM(CASE WHEN is_admin THEN 1 ELSE 0 END) as admins FROM data" --parquet users.parquet
-
-    echo ""
-    echo "--- Total Channels ---"
-    $DUCKDB "SELECT COUNT(*) as total_channels, SUM(CASE WHEN is_archived THEN 1 ELSE 0 END) as archived, SUM(CASE WHEN is_private THEN 1 ELSE 0 END) as private FROM data" --parquet channels.parquet
-
-    echo ""
-    echo "--- Total Messages ---"
-    $DUCKDB "SELECT COUNT(*) as total_messages, SUM(CASE WHEN is_reply THEN 1 ELSE 0 END) as thread_replies, COUNT(DISTINCT user) as unique_users FROM data"
-
-    echo ""
-    echo "=== Channel Stats ==="
-    echo ""
-    echo "--- Top 10 Channels by Members ---"
-    $DUCKDB "SELECT name, num_members FROM data WHERE NOT is_archived ORDER BY num_members DESC LIMIT 10" --parquet channels.parquet
-
-    echo ""
-    echo "--- Top 10 Channels by Message Count ---"
-    $DUCKDB "SELECT channel_name, COUNT(*) as msg_count FROM data GROUP BY channel_name ORDER BY msg_count DESC LIMIT 10"
-
-    echo ""
-    echo "=== User Activity ==="
-    echo ""
-    echo "--- Top 10 Most Active Users ---"
-    $DUCKDB "SELECT user, COUNT(*) as msg_count FROM data GROUP BY user ORDER BY msg_count DESC LIMIT 10"
-
-    echo ""
-    echo "=== Time-based Stats ==="
-    echo ""
-    echo "--- Messages by Week ---"
-    $DUCKDB "SELECT year, week, COUNT(*) as msg_count FROM data GROUP BY year, week ORDER BY year DESC, week DESC LIMIT 10"
-
-    echo ""
-    echo "--- Messages by Date (Last 10 Days) ---"
-    $DUCKDB "SELECT date, COUNT(*) as msg_count FROM data GROUP BY date ORDER BY date DESC LIMIT 10"
-
-    echo ""
-    echo "=== Thread Activity ==="
-    echo ""
-    echo "--- Top 10 Threads by Reply Count ---"
-    $DUCKDB "SELECT channel_name, thread_ts, COUNT(*) as reply_count FROM data WHERE is_reply GROUP BY channel_name, thread_ts ORDER BY reply_count DESC LIMIT 10"
-
-    echo ""
-    echo "=== Sample Queries Complete ==="
+    ./scripts/run-duckdb-sample-queries.sh
 
 # Run smoke tests for all CLI commands
 smoke-test:
@@ -198,26 +148,7 @@ server-smoke-test:
 
 # Start a local archive server for testing the client with local parquet files
 start-local-archive-server port="8080" base_path=".":
-    #!/usr/bin/env bash
-    set -e
-    CONFIG=$(mktemp --suffix=.toml)
-    cat > "$CONFIG" <<EOF
-    [server]
-    host = "127.0.0.1"
-    port = {{port}}
-    static_assets = "{{client_dir}}"
-
-    [slack-archive]
-    base_path = "{{base_path}}"
-    EOF
-    echo "Starting local archive server on http://127.0.0.1:{{port}}"
-    echo "Archive base path: {{base_path}}"
-    echo "Static assets: {{client_dir}}"
-    echo ""
-    echo "Test the client at: http://127.0.0.1:{{port}}/examples/index.html"
-    echo ""
-    trap "rm -f $CONFIG" EXIT
-    cargo run --features server --bin slack-archive-server -- serve "$CONFIG"
+    ./scripts/start-local-archive-server.sh {{port}} {{base_path}} {{client_dir}}
 
 # JS client directory
 client_dir := "tools/slack-archive-client"
@@ -236,43 +167,4 @@ typecheck-client:
 
 # Build all binaries for release and create distribution package
 dist:
-    #!/usr/bin/env bash
-    set -e
-
-    echo "=== Building distribution package ==="
-
-    # Clean and create dist directory
-    rm -rf dist
-    mkdir -p dist
-
-    echo "Building slack-utils (release)..."
-    cargo build --release --features tui
-    cp target/release/slack-utils dist/
-
-    echo "Building slack-utils-duckdb (release)..."
-    cargo build --release --features duckdb --bin slack-utils-duckdb
-    cp target/release/slack-utils-duckdb dist/
-
-    echo "Building slack-archive-server (release)..."
-    cargo build --release --features server --bin slack-archive-server
-    cp target/release/slack-archive-server dist/
-
-    echo "Building slack-archive-client (JS)..."
-    cd {{client_dir}} && bun install && bun run dist
-    cp -r {{client_dir}}/dist dist/slack-archive-client
-
-    echo "Copying documentation and config files..."
-    cp resources/dist-README.md dist/README.md
-    cp resources/sample-server-config.toml dist/config.example.toml
-
-    echo ""
-    echo "=== Distribution package created in dist/ ==="
-    ls -lah dist/
-    echo ""
-    echo "Contents:"
-    echo "  - slack-utils            : Main CLI tool"
-    echo "  - slack-utils-duckdb     : DuckDB query tool"
-    echo "  - slack-archive-server   : HTTP server"
-    echo "  - slack-archive-client/  : JS client library (ESM + types)"
-    echo "  - README.md              : Usage instructions"
-    echo "  - config.example.toml    : Server config template"
+    ./scripts/dist.sh {{client_dir}}
