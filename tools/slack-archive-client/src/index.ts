@@ -20,3 +20,13 @@ export type {
   LoadedTableInfo,
   TableName,
 } from "./duckdb-client.js";
+
+// Cache utilities
+export { IndexedDBCache, createCachingFetch } from "./cache/index.js";
+export type {
+  CacheEntry,
+  CacheStorage,
+  CachingFetchOptions,
+  CacheEvent,
+  IndexedDBCacheOptions,
+} from "./cache/index.js";

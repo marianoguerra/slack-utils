@@ -6,6 +6,7 @@ JavaScript/TypeScript client library for `slack-archive-server`.
 
 - **SlackArchiveClient**: Fetch parquet files via HTTP API or static file paths
 - **SlackArchiveDuckDB**: Load parquet files into DuckDB WASM for in-browser SQL queries
+- **Browser caching**: Optional IndexedDB-based caching for offline access
 - **Two client modes**: API mode (server endpoints) or Static mode (direct file access)
 - Full TypeScript support with type definitions
 - Progress callbacks for data loading operations
@@ -145,6 +146,76 @@ await db.dropTable("threads");
 await db.loadThreads("2024-06-01", "2024-06-30");
 ```
 
+### Browser Caching
+
+Enable persistent caching of parquet files using IndexedDB for faster repeat loads and offline access:
+
+```typescript
+import { SlackArchiveClient, SlackArchiveDuckDB } from "slack-archive-client";
+import { createCachingFetch, IndexedDBCache } from "slack-archive-client";
+
+// Create cache storage
+const cache = new IndexedDBCache();
+
+// Create caching fetch wrapper with TTL settings
+const cachedFetch = createCachingFetch(fetch, cache, {
+  ttl: {
+    "**/users.parquet": 24 * 60 * 60 * 1000,      // 24 hours
+    "**/channels.parquet": 24 * 60 * 60 * 1000,   // 24 hours
+    "**/conversations/**": 7 * 24 * 60 * 60 * 1000, // 7 days (immutable)
+  },
+  maxSize: 500 * 1024 * 1024, // 500MB limit
+});
+
+// Use cached fetch with client
+const client = new SlackArchiveClient({
+  baseUrl: "http://localhost:8080",
+  fetch: cachedFetch,
+});
+
+const db = new SlackArchiveDuckDB({ client });
+await db.init();
+await db.loadAll("2024-01-01", "2024-03-31"); // Cached after first load
+```
+
+**Disable caching** (default behavior):
+
+```typescript
+const client = new SlackArchiveClient({
+  baseUrl: "http://localhost:8080",
+  // No fetch override = no caching
+});
+```
+
+**Monitor cache events**:
+
+```typescript
+const cachedFetch = createCachingFetch(fetch, cache, {
+  onCacheEvent: (event) => {
+    console.log(`Cache ${event.type}: ${event.url}`);
+    if (event.type === "hit") {
+      console.log(`  Age: ${event.age}ms`);
+    }
+  },
+});
+```
+
+**Manual cache management**:
+
+```typescript
+const cache = new IndexedDBCache();
+
+// Get cache size
+const size = await cache.size();
+console.log(`Cache: ${(size / 1024 / 1024).toFixed(2)} MB`);
+
+// List cached files
+const keys = await cache.keys();
+
+// Clear all cached data
+await cache.clear();
+```
+
 ## API Reference
 
 ### SlackArchiveClient
@@ -229,6 +300,30 @@ interface SearchResponse {
   hits: IndexEntry[];
   processing_time_ms: number;
   estimated_total_hits?: number;
+}
+
+// Cache types
+interface CacheStorage {
+  get(key: string): Promise<CacheEntry | null>;
+  set(key: string, entry: CacheEntry): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  clear(): Promise<void>;
+  keys(): Promise<string[]>;
+  size(): Promise<number>;
+}
+
+interface CachingFetchOptions {
+  ttl?: Record<string, number>;     // TTL per URL pattern
+  defaultTtl?: number;              // Default: 1 hour
+  maxSize?: number;                 // Default: 500MB
+  onCacheEvent?: (event: CacheEvent) => void;
+}
+
+interface CacheEvent {
+  type: "hit" | "miss" | "store" | "evict" | "error";
+  url: string;
+  size?: number;
+  age?: number;
 }
 ```
 
