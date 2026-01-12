@@ -86,7 +86,6 @@ const buildResult = await Bun.build({
     entrypoints: ["./static-app.js"],
     outdir: "./dist",
     format: "esm",
-    target: "browser",
 });
 
 if (!buildResult.success) {
