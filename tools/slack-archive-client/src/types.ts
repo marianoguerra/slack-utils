@@ -64,11 +64,22 @@ export interface ErrorResponse {
 }
 
 /**
+ * Client mode: "api" for slack-archive-server, "static" for static file hosting
+ */
+export type ClientMode = "api" | "static";
+
+/**
  * Client configuration options
  */
 export interface SlackArchiveClientOptions {
-  /** Base URL of the slack-archive-server (e.g., "http://localhost:8080") */
+  /** Base URL of the slack-archive-server or static file host (e.g., "http://localhost:8080") */
   baseUrl: string;
+  /**
+   * Client mode:
+   * - "api" (default): Use slack-archive-server API endpoints
+   * - "static": Fetch files directly from static paths (for static hosting)
+   */
+  mode?: ClientMode;
   /** Optional custom fetch implementation */
   fetch?: typeof fetch;
 }

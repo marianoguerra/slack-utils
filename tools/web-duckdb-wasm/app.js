@@ -127,9 +127,14 @@ LIMIT 30`,
 };
 
 class DuckDBApp {
-    constructor() {
+    constructor(options = {}) {
         this.db = null;
         this.client = null;
+        // Mode can be set via: options, global variable, or URL param
+        this.mode = options.mode
+            || window.SLACK_ARCHIVE_MODE
+            || new URLSearchParams(window.location.search).get('mode')
+            || 'api';
 
         this.init();
     }
@@ -199,16 +204,17 @@ class DuckDBApp {
 
     async initDuckDB() {
         try {
-            // Create SlackArchiveClient pointing to the current server
+            // Create SlackArchiveClient with the configured mode
             this.client = new SlackArchiveClient({
-                baseUrl: window.location.origin
+                baseUrl: window.location.origin,
+                mode: this.mode
             });
 
             // Create and initialize SlackArchiveDuckDB
             this.db = new SlackArchiveDuckDB({ client: this.client });
             await this.db.init();
 
-            console.log('DuckDB initialized successfully');
+            console.log(`DuckDB initialized successfully (mode: ${this.mode})`);
         } catch (error) {
             console.error('Failed to initialize DuckDB:', error);
             this.showLoadError(`Failed to initialize DuckDB: ${error.message}`);

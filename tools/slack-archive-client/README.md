@@ -4,8 +4,9 @@ JavaScript/TypeScript client library for `slack-archive-server`.
 
 ## Features
 
-- **SlackArchiveClient**: Fetch parquet files and search via the HTTP API
+- **SlackArchiveClient**: Fetch parquet files via HTTP API or static file paths
 - **SlackArchiveDuckDB**: Load parquet files into DuckDB WASM for in-browser SQL queries
+- **Two client modes**: API mode (server endpoints) or Static mode (direct file access)
 - Full TypeScript support with type definitions
 - Progress callbacks for data loading operations
 - Works in modern browsers and Node.js/Bun/Deno
@@ -46,6 +47,47 @@ const results = await client.search("deployment", 20);
 
 // Check server connectivity
 const isUp = await client.ping();
+```
+
+### Static Mode (No Server API)
+
+For static file hosting (e.g., GitHub Pages, S3), use `mode: "static"` to fetch parquet files directly without server API endpoints:
+
+```typescript
+import { SlackArchiveClient } from "slack-archive-client";
+
+const client = new SlackArchiveClient({
+  baseUrl: "https://your-static-site.com",
+  mode: "static",  // Direct file access mode
+});
+
+// Fetches /users.parquet directly
+const usersBuffer = await client.getUsers();
+
+// Fetches /channels.parquet directly
+const channelsBuffer = await client.getChannels();
+
+// In static mode, probes for available week partitions via HEAD requests
+// Checks files like /conversations/year=2024/week=01/threads.parquet
+const { available } = await client.getThreadsInRange("2024-01-01", "2024-03-31");
+
+// Fetches /conversations/year=2024/week=03/threads.parquet
+const threadsBuffer = await client.getThreads(2024, 3);
+
+// Note: search() is not available in static mode (requires Meilisearch)
+```
+
+Static mode expects this file structure on your static host:
+
+```
+/
+├── users.parquet
+├── channels.parquet
+└── conversations/
+    └── year=2024/
+        ├── week=01/threads.parquet
+        ├── week=02/threads.parquet
+        └── ...
 ```
 
 ### DuckDB Client (In-Browser SQL)
@@ -110,6 +152,7 @@ await db.loadThreads("2024-06-01", "2024-06-30");
 ```typescript
 new SlackArchiveClient(options: {
   baseUrl: string;
+  mode?: "api" | "static";  // Default: "api"
   fetch?: typeof fetch;
 })
 ```
@@ -120,8 +163,19 @@ new SlackArchiveClient(options: {
 | `getChannels()` | `Promise<ArrayBuffer>` | Fetch `channels.parquet` |
 | `getThreadsInRange(from, to)` | `Promise<{ available: YearWeek[] }>` | List available partitions |
 | `getThreads(year, week)` | `Promise<ArrayBuffer>` | Fetch `threads.parquet` |
-| `search(query, limit?)` | `Promise<SearchResponse>` | Search via Meilisearch |
+| `search(query, limit?)` | `Promise<SearchResponse>` | Search via Meilisearch (API mode only) |
 | `ping()` | `Promise<boolean>` | Check server connectivity |
+| `getMode()` | `ClientMode` | Get current client mode |
+
+**Mode differences:**
+
+| Operation | API Mode | Static Mode |
+|-----------|----------|-------------|
+| `getUsers()` | `GET /archive/users` | `GET /users.parquet` |
+| `getChannels()` | `GET /archive/channels` | `GET /channels.parquet` |
+| `getThreadsInRange()` | `GET /archive/threads-in-range` | HEAD probes for each week |
+| `getThreads(y, w)` | `GET /archive/threads?year=...` | `GET /conversations/year=.../week=.../threads.parquet` |
+| `search()` | `POST /archive/search` | Not available (throws error) |
 
 ### SlackArchiveDuckDB
 
@@ -149,6 +203,8 @@ new SlackArchiveDuckDB(options: {
 ### Types
 
 ```typescript
+type ClientMode = "api" | "static";
+
 interface QueryResult<T> {
   rows: T[];
   schema: Array<{ name: string; type: string }>;

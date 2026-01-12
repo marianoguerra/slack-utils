@@ -80,10 +80,10 @@ if (errors.length > 0) {
 
 console.log("All required files found.");
 
-// Bundle static-app.js on startup
-console.log("Bundling static-app.js...");
+// Bundle app.js on startup (same as serve.js, mode is set in HTML)
+console.log("Bundling app.js...");
 const buildResult = await Bun.build({
-    entrypoints: ["./static-app.js"],
+    entrypoints: ["./app.js"],
     outdir: "./dist",
     format: "esm",
 });
@@ -105,9 +105,9 @@ const server = Bun.serve({
             path = "/static-files.html";
         }
 
-        // Serve bundled static-app.js from dist
-        if (path === "/static-app.js") {
-            path = "/dist/static-app.js";
+        // Serve bundled app.js from dist
+        if (path === "/app.js") {
+            path = "/dist/app.js";
         }
 
         // Serve parquet files from basePath

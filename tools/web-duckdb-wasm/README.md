@@ -91,13 +91,18 @@ API endpoints:
 
 ### 2. Static File Server (`static-file-server.js`)
 
-Simple static server for pre-built deployments:
+Static file server for deploying to static hosting (e.g., GitHub Pages, S3). Uses the `SlackArchiveClient` in static mode, which probes for parquet files directly instead of using API endpoints:
 
 ```bash
 just serve-static /path/to/parquet/files
 # or
 bun static-file-server.js --path /path/to/parquet/files
 ```
+
+In static mode, the client:
+- Fetches `/users.parquet` and `/channels.parquet` directly
+- Probes for thread files via HEAD requests to `/conversations/year=YYYY/week=WW/threads.parquet`
+- Search is not available (requires Meilisearch server)
 
 ### 3. With slack-archive-server
 
@@ -195,7 +200,9 @@ just serve-with-server [path]  # Test with slack-archive-server
 
 ## Standalone Deployment
 
-To deploy without the dev server:
+### With API Server
+
+To deploy with a backend that implements the `/archive/*` API:
 
 1. Build the app:
    ```bash
@@ -211,6 +218,32 @@ To deploy without the dev server:
    - Serve static files
    - Implement the `/archive/*` API endpoints
    - Set CORS headers: `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`
+
+### Static Hosting Only
+
+To deploy to static hosting (GitHub Pages, S3, etc.) without any backend:
+
+1. Build the app:
+   ```bash
+   just build
+   ```
+
+2. Copy these files:
+   - `dist/app.js` - Bundled application
+   - `static-files.html` - Static mode page (rename to `index.html`)
+   - `style.css` - Styles
+   - Your parquet files:
+     ```
+     users.parquet
+     channels.parquet
+     conversations/year=YYYY/week=WW/threads.parquet
+     ```
+
+3. Ensure your static host:
+   - Supports HEAD requests (for file probing)
+   - Sets CORS headers if accessed cross-origin
+
+The static mode sets `window.SLACK_ARCHIVE_MODE = 'static'` which tells the client to fetch files directly instead of using API endpoints.
 
 ## Requirements
 

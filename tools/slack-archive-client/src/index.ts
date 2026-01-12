@@ -1,6 +1,7 @@
 export { SlackArchiveClient, SlackArchiveError } from "./client.js";
 export type {
   SlackArchiveClientOptions,
+  ClientMode,
   YearWeek,
   IndexUser,
   IndexChannel,
