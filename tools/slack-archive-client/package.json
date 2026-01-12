@@ -15,7 +15,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --format esm && bun run build:types",
+    "build": "bun build src/index.ts --outdir dist --format esm --external @duckdb/duckdb-wasm && bun run build:types",
     "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
     "dist": "bun run build",
     "clean": "rm -rf dist",
