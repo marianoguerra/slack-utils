@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::time::Duration;
 
-use slack_blocks_render::{render_blocks_as_markdown, SlackReferences};
+use crate::slack_render::{render_blocks_as_markdown, SlackReferences};
 use slack_morphism::prelude::{SlackBlock, SlackChannelId, SlackUserId};
 use webpage::{Webpage, WebpageOptions};
 

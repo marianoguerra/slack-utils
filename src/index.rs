@@ -4,7 +4,7 @@ use std::io::BufWriter;
 
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use slack_blocks_render::{render_blocks_as_markdown, SlackReferences};
+use crate::slack_render::{render_blocks_as_markdown, SlackReferences};
 use slack_morphism::prelude::{SlackBlock, SlackChannelId, SlackUserId};
 
 use crate::error::{AppError, Result};
