@@ -1,5 +1,6 @@
 /target
 /.env
+/env.nu
 /channels.json
 /conversations.json
 /users.json
