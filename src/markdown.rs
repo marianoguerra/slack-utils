@@ -8,7 +8,7 @@ use slack_morphism::prelude::{SlackBlock, SlackChannelId, SlackUserId};
 use webpage::{Webpage, WebpageOptions};
 
 use crate::error::{AppError, Result};
-use crate::formatter::{format_attachment, format_file, format_permalink, FormatterStats, MarkdownExportOptions};
+use crate::formatter::{format_attachment, format_file, format_permalink, format_prefix, format_suffix, FormatterStats, MarkdownExportOptions};
 use crate::ProgressCallback;
 
 /// Maximum bytes to fetch when resolving link titles (32KB should be enough for <title>)
@@ -314,6 +314,16 @@ pub fn export_conversations_to_markdown_with_options(
     })?;
     let mut writer = BufWriter::new(output_file);
 
+    // Call formatter for prefix content if script is configured
+    if let Some(script_path) = &options.formatter_script
+        && let Some(prefix_content) = format_prefix(script_path, &conversations, &mut formatter_stats)
+    {
+        write!(writer, "{}", prefix_content).map_err(|e| AppError::WriteFile {
+            path: output_path.to_string(),
+            source: e,
+        })?;
+    }
+
     let mut message_count = 0;
     let mut current_channel_id: Option<String> = None;
 
@@ -602,6 +612,16 @@ pub fn export_conversations_to_markdown_with_options(
 
             message_count += 1;
         }
+    }
+
+    // Call formatter for suffix content if script is configured
+    if let Some(script_path) = &options.formatter_script
+        && let Some(suffix_content) = format_suffix(script_path, &conversations, &mut formatter_stats)
+    {
+        write!(writer, "{}", suffix_content).map_err(|e| AppError::WriteFile {
+            path: output_path.to_string(),
+            source: e,
+        })?;
     }
 
     writer.flush().map_err(|e| AppError::WriteFile {

@@ -14,6 +14,7 @@ mod meilisearch;
 mod parquet;
 mod settings;
 mod slack;
+mod slack_render;
 
 #[cfg(feature = "tui")]
 mod app;

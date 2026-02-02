@@ -10,7 +10,7 @@ use crate::ui::types::{
     ArchiveRangeField, AsyncResult, ConvExportField, ConvExportWeekField,
     DownloadAttachmentsField, EditConvPathField, EditableChannelList, ExportEmojisField,
     ExportIndexField, ExportTask, ImportMeilisearchField, ListNavigation, MarkdownExportField,
-    MenuItem, QueryMeilisearchField, Screen,
+    MdToHtmlField, MenuItem, QueryMeilisearchField, Screen,
 };
 use crate::widgets::TextInput;
 use crate::OutputFormat;
@@ -114,6 +114,15 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                             results: None,
                             result_state: ListState::default(),
                             error: None,
+                        };
+                    }
+                    MenuItem::MdToHtml => {
+                        let s = &app.settings.md_to_html;
+                        app.screen = Screen::MdToHtml {
+                            input_path: s.input_path.clone(),
+                            output_path: s.output_path.clone().unwrap_or_default(),
+                            gfm: s.gfm,
+                            active_field: MdToHtmlField::InputPath,
                         };
                     }
                     MenuItem::Exit => app.should_quit = true,
@@ -1257,6 +1266,77 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 }
             }
         }
+        Screen::MdToHtml {
+            input_path,
+            output_path,
+            gfm,
+            active_field,
+        } => match key.code {
+            KeyCode::Esc => app.screen = Screen::MainMenu,
+            KeyCode::Tab => {
+                *active_field = match active_field {
+                    MdToHtmlField::InputPath => MdToHtmlField::OutputPath,
+                    MdToHtmlField::OutputPath => MdToHtmlField::Gfm,
+                    MdToHtmlField::Gfm => MdToHtmlField::InputPath,
+                };
+            }
+            KeyCode::BackTab => {
+                *active_field = match active_field {
+                    MdToHtmlField::InputPath => MdToHtmlField::Gfm,
+                    MdToHtmlField::OutputPath => MdToHtmlField::InputPath,
+                    MdToHtmlField::Gfm => MdToHtmlField::OutputPath,
+                };
+            }
+            KeyCode::Char(' ') if *active_field == MdToHtmlField::Gfm => {
+                *gfm = !*gfm;
+            }
+            KeyCode::Char(c) => match active_field {
+                MdToHtmlField::InputPath => input_path.push(c),
+                MdToHtmlField::OutputPath => output_path.push(c),
+                MdToHtmlField::Gfm => {}
+            },
+            KeyCode::Backspace => match active_field {
+                MdToHtmlField::InputPath => {
+                    input_path.pop();
+                }
+                MdToHtmlField::OutputPath => {
+                    output_path.pop();
+                }
+                MdToHtmlField::Gfm => {}
+            },
+            KeyCode::Enter => {
+                let input = input_path.clone();
+                let output = if output_path.is_empty() {
+                    None
+                } else {
+                    Some(output_path.clone())
+                };
+                let use_gfm = *gfm;
+
+                app.save_md_to_html_settings(&input, output.as_deref(), use_gfm);
+
+                app.screen = Screen::Loading {
+                    message: "Converting markdown to HTML...".to_string(),
+                    progress: None,
+                };
+
+                let (tx, rx) = mpsc::channel();
+                app.async_result_rx = Some(rx);
+
+                thread::spawn(move || {
+                    let options = if use_gfm {
+                        crate::md_to_html::MdToHtmlOptions::gfm()
+                    } else {
+                        crate::md_to_html::MdToHtmlOptions::default()
+                    };
+                    let result = crate::run_md_to_html(&input, output.as_deref(), &options);
+                    let _ = tx.send(AsyncResult::MdToHtmlResult(
+                        result.map_err(|e| e.to_string()),
+                    ));
+                });
+            }
+            _ => {}
+        },
         Screen::Loading { .. } => {}
         Screen::Success {
             details,

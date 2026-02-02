@@ -2513,6 +2513,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "markdown"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5cab8f2cadc416a82d2e783a1946388b31654d391d1c7d92cc1f03e295b1deb"
+dependencies = [
+ "unicode-id",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4054,20 +4063,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
-name = "slack-blocks-render"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c1ac3b5ccd1c5032a8a8ea3e105ef260d31d55a66355f7909b8fba8d3f3229c"
-dependencies = [
- "despatma",
- "emojis",
- "serde",
- "serde_json",
- "slack-morphism",
- "url",
-]
-
-[[package]]
 name = "slack-morphism"
 version = "2.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4119,7 +4114,10 @@ dependencies = [
  "chrono",
  "clap",
  "crossterm",
+ "despatma",
  "duckdb",
+ "emojis",
+ "markdown",
  "meilisearch-sdk",
  "parquet",
  "ratatui",
@@ -4127,7 +4125,6 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "slack-blocks-render",
  "slack-morphism",
  "tempfile",
  "thiserror 2.0.17",
@@ -4136,6 +4133,7 @@ dependencies = [
  "toml",
  "tower",
  "tower-http",
+ "url",
  "uuid",
  "walkdir",
  "webpage",
@@ -4815,6 +4813,12 @@ name = "unicase"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
+
+[[package]]
+name = "unicode-id"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70ba288e709927c043cbe476718d37be306be53fb1fafecd0dbe36d072be2580"
 
 [[package]]
 name = "unicode-ident"

@@ -452,6 +452,16 @@ impl App {
                         *results = None;
                     }
                 }
+                AsyncResult::MdToHtmlResult(Ok(())) => {
+                    self.screen = Screen::Success {
+                        message: "Markdown converted to HTML successfully".to_string(),
+                        details: None,
+                        details_scroll: 0,
+                    };
+                }
+                AsyncResult::MdToHtmlResult(Err(msg)) => {
+                    self.screen = Screen::Error { message: msg };
+                }
             }
         }
     }

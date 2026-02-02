@@ -3,24 +3,29 @@
 Formatter script for slack-utils markdown export.
 
 This script implements the CGI-like protocol for custom formatting of permalinks,
-attachments, and files. It reads a JSON request from stdin and writes a JSON response
-to stdout.
+attachments, files, and document prefix/suffix. It reads a JSON request from stdin
+and writes a JSON response to stdout.
 
 Input format (stdin):
 {
     "headers": {
-        "action": "format-permalink" | "format-attachment" | "format-file",
+        "action": "format-permalink" | "format-attachment" | "format-file" | "prefix" | "suffix",
         "channel_id": "C123",
         "channel_name": "general",
         "message_ts": "1234567890.123456"  // only for format-permalink
     },
-    "body": { /* message, attachment, or file JSON */ }
+    "body": { /* message, attachment, file JSON, or {"threads": [...]} for prefix/suffix */ }
 }
 
-Output format (stdout, exit code 0):
+Output format for format-* actions (stdout, exit code 0):
 {
     "label": "Display text",
     "url": "https://..."
+}
+
+Output format for prefix/suffix actions (stdout, exit code 0):
+{
+    "content": "string to insert before/after markdown"
 }
 
 Exit codes:
@@ -115,6 +120,36 @@ def format_file(headers: dict, body: dict, verbose: bool = False) -> dict:
     }
 
 
+def format_prefix(headers: dict, body: dict, verbose: bool = False) -> dict:
+    """Generate content to insert before the markdown.
+
+    This identity implementation returns empty content.
+    The body contains {"threads": [...]} with all conversation threads.
+    """
+    threads = body.get("threads", [])
+
+    if verbose:
+        print(f"[prefix] Received {len(threads)} threads", file=sys.stderr)
+
+    # Identity implementation: return empty content
+    return {"content": ""}
+
+
+def format_suffix(headers: dict, body: dict, verbose: bool = False) -> dict:
+    """Generate content to insert after the markdown.
+
+    This identity implementation returns empty content.
+    The body contains {"threads": [...]} with all conversation threads.
+    """
+    threads = body.get("threads", [])
+
+    if verbose:
+        print(f"[suffix] Received {len(threads)} threads", file=sys.stderr)
+
+    # Identity implementation: return empty content
+    return {"content": ""}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Formatter script for slack-utils markdown export"
@@ -148,6 +183,10 @@ def main():
             response = format_attachment(headers, body, args.verbose)
         elif action == "format-file":
             response = format_file(headers, body, args.verbose)
+        elif action == "prefix":
+            response = format_prefix(headers, body, args.verbose)
+        elif action == "suffix":
+            response = format_suffix(headers, body, args.verbose)
         else:
             print(f"Error: Unknown action '{action}'", file=sys.stderr)
             sys.exit(1)

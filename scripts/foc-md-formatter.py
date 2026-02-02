@@ -2,25 +2,30 @@
 """
 Formatter script for slack-utils markdown export - Future of Coding edition.
 
-This script implements the CGI-like protocol for custom formatting of permalinks
-and attachments. It reads a JSON request from stdin and writes a JSON response
-to stdout.
+This script implements the CGI-like protocol for custom formatting of permalinks,
+attachments, files, and document prefix/suffix. It reads a JSON request from stdin
+and writes a JSON response to stdout.
 
 Input format (stdin):
 {
     "headers": {
-        "action": "format-permalink" | "format-attachment",
+        "action": "format-permalink" | "format-attachment" | "format-file" | "prefix" | "suffix",
         "channel_id": "C123",
         "channel_name": "general",
         "message_ts": "1234567890.123456"  // only for format-permalink
     },
-    "body": { /* message or attachment JSON */ }
+    "body": { /* message, attachment, file JSON, or {"threads": [...]} for prefix/suffix */ }
 }
 
-Output format (stdout, exit code 0):
+Output format for format-* actions (stdout, exit code 0):
 {
     "label": "Display text",
     "url": "https://..."
+}
+
+Output format for prefix/suffix actions (stdout, exit code 0):
+{
+    "content": "string to insert before/after markdown"
 }
 
 Exit codes:
@@ -176,6 +181,48 @@ def format_attachment(headers: dict, body: dict, verbose: bool = False) -> dict:
     }
 
 
+def format_prefix(headers: dict, body: dict, verbose: bool = False) -> dict:
+    """Generate content to insert before the markdown.
+
+    The body contains {"threads": [...]} with all conversation threads.
+    Returns empty content by default - customize as needed.
+    """
+    threads = body.get("threads", [])
+
+    if verbose:
+        print(f"[prefix] Received {len(threads)} threads", file=sys.stderr)
+
+    # Return empty content by default
+    return {"content": ""}
+
+SUFFIX = """
+----------
+
+👨🏽‍💻 By 🐘 [@marianoguerra@hachyderm.io](https://hachyderm.io/@marianoguerra) 🦋 [@marianoguerra.org](https://bsky.app/profile/marianoguerra.org)
+
+💬 Not a member yet? Check the [Feeling of Computing Community](https://feelingof.com/)
+
+✉️ Not subscribed yet? [Subscribe to the Newsletter](https://newsletter.futureofcoding.org/join/) / [Archive](https://newsletter.futureofcoding.org/archive.html) / [RSS](https://history.futureofcoding.org/newsletter/rss.xml)
+
+🎙️ Prefer podcasts? check the [Feeling of Computing Podcast](https://feelingof.com/episodes/)
+
+"""
+
+def format_suffix(headers: dict, body: dict, verbose: bool = False) -> dict:
+    """Generate content to insert after the markdown.
+
+    The body contains {"threads": [...]} with all conversation threads.
+    Returns empty content by default - customize as needed.
+    """
+    threads = body.get("threads", [])
+
+    if verbose:
+        print(f"[suffix] Received {len(threads)} threads", file=sys.stderr)
+
+    # Return empty content by default
+    return {"content": SUFFIX}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Formatter script for slack-utils markdown export (Future of Coding)"
@@ -218,6 +265,10 @@ def main():
             response = format_attachment(headers, body, args.verbose)
         elif action == "format-file":
             response = format_file(headers, body, args.verbose)
+        elif action == "prefix":
+            response = format_prefix(headers, body, args.verbose)
+        elif action == "suffix":
+            response = format_suffix(headers, body, args.verbose)
         else:
             print(f"Error: Unknown action '{action}'", file=sys.stderr)
             sys.exit(1)

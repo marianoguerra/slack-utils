@@ -835,4 +835,5 @@ pub enum AsyncResult {
     ExportComplete(std::result::Result<ExportResult, String>),
     ChannelsLoaded(std::result::Result<Vec<ChannelInfo>, String>),
     QueryResult(std::result::Result<Vec<crate::index::IndexEntry>, String>),
+    MdToHtmlResult(std::result::Result<(), String>),
 }

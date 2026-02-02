@@ -29,6 +29,12 @@ pub struct FormatterResponse {
     pub url: String,
 }
 
+/// Response for prefix/suffix actions - returns content to insert
+#[derive(Debug, Clone, Deserialize)]
+pub struct ContentResponse {
+    pub content: String,
+}
+
 /// Output from calling the formatter script, including stderr
 #[derive(Debug, Clone)]
 pub struct FormatterOutput {
@@ -48,6 +54,12 @@ pub struct FormatterStats {
     pub file_calls: usize,
     pub file_successes: usize,
     pub file_failures: usize,
+    pub prefix_calls: usize,
+    pub prefix_successes: usize,
+    pub prefix_failures: usize,
+    pub suffix_calls: usize,
+    pub suffix_successes: usize,
+    pub suffix_failures: usize,
     pub stderr_count: usize,
     pub stderr_outputs: Vec<String>,
 }
@@ -58,15 +70,15 @@ impl FormatterStats {
     }
 
     pub fn total_calls(&self) -> usize {
-        self.permalink_calls + self.attachment_calls + self.file_calls
+        self.permalink_calls + self.attachment_calls + self.file_calls + self.prefix_calls + self.suffix_calls
     }
 
     pub fn total_successes(&self) -> usize {
-        self.permalink_successes + self.attachment_successes + self.file_successes
+        self.permalink_successes + self.attachment_successes + self.file_successes + self.prefix_successes + self.suffix_successes
     }
 
     pub fn total_failures(&self) -> usize {
-        self.permalink_failures + self.attachment_failures + self.file_failures
+        self.permalink_failures + self.attachment_failures + self.file_failures + self.prefix_failures + self.suffix_failures
     }
 
     /// Add stderr output to the stats if non-empty
@@ -259,6 +271,134 @@ pub fn format_file(
     }
 }
 
+/// Output from calling the formatter script for content actions (prefix/suffix)
+#[derive(Debug, Clone)]
+pub struct ContentOutput {
+    pub response: ContentResponse,
+    pub stderr: Option<String>,
+}
+
+/// Call the external formatter script for content actions (prefix/suffix)
+/// Returns the content response along with any stderr output
+pub fn call_formatter_for_content(script_path: &str, request: &FormatterRequest) -> Result<ContentOutput> {
+    let request_json =
+        serde_json::to_string(request).map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+
+    let mut child = Command::new(script_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| AppError::FormatterScript(format!("failed to spawn script: {}", e)))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(request_json.as_bytes())
+            .map_err(|e| AppError::FormatterScript(format!("failed to write to stdin: {}", e)))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| AppError::FormatterScript(format!("failed to wait for script: {}", e)))?;
+
+    // Capture stderr (even on success)
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr_opt = if stderr.trim().is_empty() {
+        None
+    } else {
+        Some(stderr.trim().to_string())
+    };
+
+    if !output.status.success() {
+        return Err(AppError::FormatterScript(format!(
+            "script exited with status {}: {}",
+            output.status,
+            stderr.trim()
+        )));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let response: ContentResponse = serde_json::from_str(&stdout)
+        .map_err(|e| AppError::FormatterScript(format!("invalid JSON response: {}: {}", e, stdout)))?;
+
+    Ok(ContentOutput {
+        response,
+        stderr: stderr_opt,
+    })
+}
+
+/// Get prefix content to insert before the markdown using the external formatter script
+/// The threads parameter contains all conversation threads to be exported
+pub fn format_prefix(
+    script_path: &str,
+    threads: &[serde_json::Value],
+    stats: &mut FormatterStats,
+) -> Option<String> {
+    stats.prefix_calls += 1;
+
+    let request = FormatterRequest {
+        headers: FormatterHeaders {
+            action: "prefix".to_string(),
+            channel_id: String::new(),
+            channel_name: String::new(),
+            message_ts: None,
+        },
+        body: serde_json::json!({ "threads": threads }),
+    };
+
+    match call_formatter_for_content(script_path, &request) {
+        Ok(output) => {
+            stats.prefix_successes += 1;
+            stats.add_stderr(output.stderr);
+            if output.response.content.is_empty() {
+                None
+            } else {
+                Some(output.response.content)
+            }
+        }
+        Err(_) => {
+            stats.prefix_failures += 1;
+            None
+        }
+    }
+}
+
+/// Get suffix content to insert after the markdown using the external formatter script
+/// The threads parameter contains all conversation threads that were exported
+pub fn format_suffix(
+    script_path: &str,
+    threads: &[serde_json::Value],
+    stats: &mut FormatterStats,
+) -> Option<String> {
+    stats.suffix_calls += 1;
+
+    let request = FormatterRequest {
+        headers: FormatterHeaders {
+            action: "suffix".to_string(),
+            channel_id: String::new(),
+            channel_name: String::new(),
+            message_ts: None,
+        },
+        body: serde_json::json!({ "threads": threads }),
+    };
+
+    match call_formatter_for_content(script_path, &request) {
+        Ok(output) => {
+            stats.suffix_successes += 1;
+            stats.add_stderr(output.stderr);
+            if output.response.content.is_empty() {
+                None
+            } else {
+                Some(output.response.content)
+            }
+        }
+        Err(_) => {
+            stats.suffix_failures += 1;
+            None
+        }
+    }
+}
+
 /// Options for markdown export with optional formatter script
 #[derive(Debug, Clone, Default)]
 pub struct MarkdownExportOptions {
@@ -314,6 +454,12 @@ mod tests {
             file_calls: 2,
             file_successes: 2,
             file_failures: 0,
+            prefix_calls: 0,
+            prefix_successes: 0,
+            prefix_failures: 0,
+            suffix_calls: 0,
+            suffix_successes: 0,
+            suffix_failures: 0,
             stderr_count: 0,
             stderr_outputs: Vec::new(),
         };
@@ -334,6 +480,12 @@ mod tests {
             file_calls: 2,
             file_successes: 2,
             file_failures: 0,
+            prefix_calls: 0,
+            prefix_successes: 0,
+            prefix_failures: 0,
+            suffix_calls: 0,
+            suffix_successes: 0,
+            suffix_failures: 0,
             stderr_count: 2,
             stderr_outputs: Vec::new(),
         };

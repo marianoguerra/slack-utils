@@ -11,10 +11,28 @@ const SETTINGS_FILE: &str = "settings.toml";
 pub struct Settings {
     #[serde(default)]
     pub ui: UiSettings,
-    #[serde(default)]
-    pub meilisearch: MeilisearchSettings,
+    #[serde(default, rename = "fetch-users")]
+    pub fetch_users: FetchUsersSettings,
+    #[serde(default, rename = "fetch-channels")]
+    pub fetch_channels: FetchChannelsSettings,
+    #[serde(default, rename = "fetch-conversations")]
+    pub fetch_conversations: FetchConversationsSettings,
+    #[serde(default, rename = "archive-range")]
+    pub archive_range: ArchiveRangeSettings,
+    #[serde(default, rename = "download-attachments")]
+    pub download_attachments: DownloadAttachmentsSettings,
+    #[serde(default, rename = "edit-conversations")]
+    pub edit_conversations: EditConversationsSettings,
     #[serde(default, rename = "markdown-export")]
     pub markdown_export: MarkdownExportSettings,
+    #[serde(default, rename = "export-emojis")]
+    pub export_emojis: ExportEmojisSettings,
+    #[serde(default, rename = "export-index")]
+    pub export_index: ExportIndexSettings,
+    #[serde(default)]
+    pub meilisearch: MeilisearchSettings,
+    #[serde(default, rename = "md-to-html")]
+    pub md_to_html: MdToHtmlSettings,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -24,7 +42,89 @@ pub struct UiSettings {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FetchUsersSettings {
+    #[serde(default, rename = "output-path")]
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FetchChannelsSettings {
+    #[serde(default, rename = "output-path")]
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FetchConversationsSettings {
+    #[serde(default, rename = "output-path")]
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ArchiveRangeSettings {
+    #[serde(default, rename = "output-path")]
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DownloadAttachmentsSettings {
+    #[serde(default, rename = "conversations-path")]
+    pub conversations_path: String,
+    #[serde(default, rename = "output-path")]
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EditConversationsSettings {
+    #[serde(default, rename = "conversations-path")]
+    pub conversations_path: String,
+    #[serde(default, rename = "users-path")]
+    pub users_path: String,
+    #[serde(default, rename = "channels-path")]
+    pub channels_path: String,
+    #[serde(default, rename = "export-path")]
+    pub export_path: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MarkdownExportSettings {
+    #[serde(default, rename = "conversations-path")]
+    pub conversations_path: String,
+    #[serde(default, rename = "users-path")]
+    pub users_path: String,
+    #[serde(default, rename = "channels-path")]
+    pub channels_path: String,
+    #[serde(default, rename = "output-path")]
+    pub output_path: String,
+    #[serde(default, rename = "formatter-script")]
+    pub formatter_script: Option<String>,
+    #[serde(default, rename = "backslash-line-breaks")]
+    pub backslash_line_breaks: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExportEmojisSettings {
+    #[serde(default, rename = "output-path")]
+    pub output_path: String,
+    #[serde(default, rename = "emojis-folder")]
+    pub emojis_folder: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ExportIndexSettings {
+    #[serde(default, rename = "conversations-path")]
+    pub conversations_path: String,
+    #[serde(default, rename = "users-path")]
+    pub users_path: String,
+    #[serde(default, rename = "channels-path")]
+    pub channels_path: String,
+    #[serde(default, rename = "output-path")]
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MeilisearchSettings {
+    #[serde(default, rename = "input-path")]
+    pub input_path: String,
     #[serde(default)]
     pub url: String,
     #[serde(default, rename = "api-key")]
@@ -34,9 +134,13 @@ pub struct MeilisearchSettings {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MarkdownExportSettings {
-    #[serde(default, rename = "formatter-script")]
-    pub formatter_script: Option<String>,
+pub struct MdToHtmlSettings {
+    #[serde(default, rename = "input-path")]
+    pub input_path: String,
+    #[serde(default, rename = "output-path")]
+    pub output_path: Option<String>,
+    #[serde(default)]
+    pub gfm: bool,
 }
 
 impl Settings {
@@ -105,6 +209,7 @@ mod tests {
     fn test_meilisearch_settings_default() {
         let ms = MeilisearchSettings::default();
 
+        assert!(ms.input_path.is_empty());
         assert!(ms.url.is_empty());
         assert!(ms.api_key.is_empty());
         assert!(ms.index_name.is_empty());
@@ -264,6 +369,7 @@ url = "http://example.com:7700"
     #[test]
     fn test_meilisearch_settings_clone() {
         let ms = MeilisearchSettings {
+            input_path: "conversations".to_string(),
             url: "http://localhost:7700".to_string(),
             api_key: "key".to_string(),
             index_name: "index".to_string(),
@@ -271,6 +377,7 @@ url = "http://example.com:7700"
 
         let cloned = ms.clone();
 
+        assert_eq!(cloned.input_path, ms.input_path);
         assert_eq!(cloned.url, ms.url);
         assert_eq!(cloned.api_key, ms.api_key);
         assert_eq!(cloned.index_name, ms.index_name);
@@ -281,6 +388,7 @@ url = "http://example.com:7700"
         let mut settings = Settings::default();
         settings.ui.selected_channels = vec!["ch1".to_string(), "ch2".to_string()];
         settings.meilisearch = MeilisearchSettings {
+            input_path: "conversations".to_string(),
             url: "http://localhost:7700".to_string(),
             api_key: "api-key-123".to_string(),
             index_name: "my-index".to_string(),
@@ -290,8 +398,41 @@ url = "http://example.com:7700"
         let deserialized: Settings = toml::from_str(&toml).unwrap();
 
         assert_eq!(deserialized.ui.selected_channels, settings.ui.selected_channels);
+        assert_eq!(deserialized.meilisearch.input_path, settings.meilisearch.input_path);
         assert_eq!(deserialized.meilisearch.url, settings.meilisearch.url);
         assert_eq!(deserialized.meilisearch.api_key, settings.meilisearch.api_key);
         assert_eq!(deserialized.meilisearch.index_name, settings.meilisearch.index_name);
+    }
+
+    #[test]
+    fn test_markdown_export_settings() {
+        let settings = MarkdownExportSettings {
+            conversations_path: "conv".to_string(),
+            users_path: "users.json".to_string(),
+            channels_path: "channels.json".to_string(),
+            output_path: "output".to_string(),
+            formatter_script: Some("script.py".to_string()),
+            backslash_line_breaks: true,
+        };
+
+        assert_eq!(settings.conversations_path, "conv");
+        assert_eq!(settings.users_path, "users.json");
+        assert_eq!(settings.channels_path, "channels.json");
+        assert_eq!(settings.output_path, "output");
+        assert_eq!(settings.formatter_script, Some("script.py".to_string()));
+        assert!(settings.backslash_line_breaks);
+    }
+
+    #[test]
+    fn test_md_to_html_settings() {
+        let settings = MdToHtmlSettings {
+            input_path: "input.md".to_string(),
+            output_path: Some("output.html".to_string()),
+            gfm: true,
+        };
+
+        assert_eq!(settings.input_path, "input.md");
+        assert_eq!(settings.output_path, Some("output.html".to_string()));
+        assert!(settings.gfm);
     }
 }
