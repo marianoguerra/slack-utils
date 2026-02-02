@@ -6,7 +6,6 @@ use ratatui::widgets::ListState;
 
 use crate::app::App;
 use crate::slack;
-use crate::settings::Settings;
 use crate::ui::types::{
     ArchiveRangeField, AsyncResult, ConvExportField, ConvExportWeekField,
     DownloadAttachmentsField, EditConvPathField, EditableChannelList, ExportEmojisField,
@@ -35,83 +34,81 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                         app.open_archive_range();
                     }
                     MenuItem::ExportUsers => {
+                        let s = &app.settings.fetch_users;
                         app.screen = Screen::ExportUsers {
-                            output_path: "users.json".to_string(),
+                            output_path: s.output_path.clone(),
                         };
                     }
                     MenuItem::ExportChannels => {
+                        let s = &app.settings.fetch_channels;
                         app.screen = Screen::ExportChannels {
-                            output_path: "channels.json".to_string(),
+                            output_path: s.output_path.clone(),
                         };
                     }
                     MenuItem::EditConversations => {
+                        let s = &app.settings.edit_conversations;
                         app.screen = Screen::EditConversationsPathInput {
-                            conversations_path: "./conversations.json".to_string(),
-                            users_path: "./users.json".to_string(),
-                            channels_path: "./channels.json".to_string(),
+                            conversations_path: s.conversations_path.clone(),
+                            users_path: s.users_path.clone(),
+                            channels_path: s.channels_path.clone(),
                             active_field: EditConvPathField::Conversations,
                         };
                     }
                     MenuItem::DownloadAttachments => {
+                        let s = &app.settings.download_attachments;
                         app.screen = Screen::DownloadAttachments {
-                            conversations_path: "./conversations.json".to_string(),
-                            output_path: "./attachments".to_string(),
+                            conversations_path: s.conversations_path.clone(),
+                            output_path: s.output_path.clone(),
                             active_field: DownloadAttachmentsField::ConversationsPath,
                         };
                     }
                     MenuItem::SelectedConversationsToMarkdown => {
-                        let saved = Settings::load().ok();
-                        let formatter_script = saved
-                            .as_ref()
-                            .and_then(|s| s.markdown_export.formatter_script.clone())
-                            .unwrap_or_default();
+                        let s = &app.settings.markdown_export;
                         app.screen = Screen::MarkdownExport {
-                            conversations_path: "./selected-conversations.json".to_string(),
-                            users_path: "./users.json".to_string(),
-                            channels_path: "./channels.json".to_string(),
-                            output_path: "./selected-conversations.md".to_string(),
-                            formatter_script,
+                            conversations_path: s.conversations_path.clone(),
+                            users_path: s.users_path.clone(),
+                            channels_path: s.channels_path.clone(),
+                            output_path: s.output_path.clone(),
+                            formatter_script: s.formatter_script.clone().unwrap_or_default(),
                             active_field: MarkdownExportField::Conversations,
                         };
                     }
                     MenuItem::ExportEmojis => {
+                        let s = &app.settings.export_emojis;
                         app.screen = Screen::ExportEmojis {
-                            output_path: "emojis.json".to_string(),
-                            emojis_folder: "emojis".to_string(),
+                            output_path: s.output_path.clone(),
+                            emojis_folder: s.emojis_folder.clone(),
                             active_field: ExportEmojisField::OutputPath,
                         };
                     }
                     MenuItem::ExportIndex => {
+                        let s = &app.settings.export_index;
                         app.screen = Screen::ExportIndex {
-                            conversations_path: "./conversations.json".to_string(),
-                            users_path: "./users.json".to_string(),
-                            channels_path: "./channels.json".to_string(),
-                            output_path: "./conversation-index.json".to_string(),
+                            conversations_path: s.conversations_path.clone(),
+                            users_path: s.users_path.clone(),
+                            channels_path: s.channels_path.clone(),
+                            output_path: s.output_path.clone(),
                             active_field: ExportIndexField::Conversations,
                         };
                     }
                     MenuItem::ImportIndexMeilisearch => {
-                        // Load saved settings if available
-                        let saved = Settings::load().ok();
-                        let ms = saved.as_ref().map(|s| &s.meilisearch);
+                        let s = &app.settings.meilisearch;
                         app.screen = Screen::ImportMeilisearch {
-                            input_path: "./conversation-index.json".to_string(),
-                            url: ms.map(|m| m.url.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "http://localhost:7700".to_string()),
-                            api_key: ms.map(|m| m.api_key.clone()).unwrap_or_default(),
-                            index_name: ms.map(|m| m.index_name.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "conversations".to_string()),
+                            input_path: s.input_path.clone(),
+                            url: s.url.clone(),
+                            api_key: s.api_key.clone(),
+                            index_name: s.index_name.clone(),
                             clear: false,
                             active_field: ImportMeilisearchField::Input,
                         };
                     }
                     MenuItem::QueryMeilisearch => {
-                        // Load saved settings if available
-                        let saved = Settings::load().ok();
-                        let ms = saved.as_ref().map(|s| &s.meilisearch);
+                        let s = &app.settings.meilisearch;
                         app.screen = Screen::QueryMeilisearch {
                             query: String::new(),
-                            url: ms.map(|m| m.url.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "http://localhost:7700".to_string()),
-                            api_key: ms.map(|m| m.api_key.clone()).unwrap_or_default(),
-                            index_name: ms.map(|m| m.index_name.clone()).filter(|s| !s.is_empty()).unwrap_or_else(|| "conversations".to_string()),
+                            url: s.url.clone(),
+                            api_key: s.api_key.clone(),
+                            index_name: s.index_name.clone(),
                             active_field: QueryMeilisearchField::Query,
                             results: None,
                             result_state: ListState::default(),
@@ -217,6 +214,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     let output_path_str = output_path.text().to_string();
 
                     app.save_selected_channels(selected_ids);
+                    app.save_fetch_conversations_settings(&output_path_str);
 
                     let task = ExportTask::Conversations {
                         from_date: from_date_str.clone(),
@@ -321,6 +319,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     let output_path_str = output_path.text().to_string();
 
                     app.save_selected_channels(selected_ids);
+                    app.save_fetch_conversations_settings(&output_path_str);
 
                     let task = ExportTask::ConversationsWeek {
                         year: year_val,
@@ -385,6 +384,8 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     let to_week_val: u32 = to_week.text().parse().unwrap_or(from_week_val);
                     let output_path_str = output_path.text().to_string();
 
+                    app.save_archive_range_settings(&output_path_str);
+
                     let task = ExportTask::ArchiveRange {
                         from_year: from_year_val,
                         from_week: from_week_val,
@@ -420,8 +421,10 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 output_path.pop();
             }
             KeyCode::Enter => {
+                let output_path_str = output_path.clone();
+                app.save_fetch_users_settings(&output_path_str);
                 let task = ExportTask::Users {
-                    output_path: output_path.clone(),
+                    output_path: output_path_str,
                     format: OutputFormat::Json, // Default to JSON for TUI
                 };
                 app.screen = Screen::Loading {
@@ -439,8 +442,10 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 output_path.pop();
             }
             KeyCode::Enter => {
+                let output_path_str = output_path.clone();
+                app.save_fetch_channels_settings(&output_path_str);
                 let task = ExportTask::Channels {
-                    output_path: output_path.clone(),
+                    output_path: output_path_str,
                     format: OutputFormat::Json, // Default to JSON for TUI
                 };
                 app.screen = Screen::Loading {
@@ -492,9 +497,12 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 field.pop();
             }
             KeyCode::Enter => {
+                let conv_path = conversations_path.clone();
+                let out_path = output_path.clone();
+                app.save_download_attachments_settings(&conv_path, &out_path);
                 let task = ExportTask::DownloadAttachments {
-                    conversations_path: conversations_path.clone(),
-                    output_path: output_path.clone(),
+                    conversations_path: conv_path,
+                    output_path: out_path,
                 };
                 app.screen = Screen::Loading {
                     message: "Downloading attachments...".to_string(),
@@ -552,16 +560,27 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 field.pop();
             }
             KeyCode::Enter => {
+                let conv_path = conversations_path.clone();
+                let usr_path = users_path.clone();
+                let ch_path = channels_path.clone();
+                let out_path = output_path.clone();
                 let script = if formatter_script.trim().is_empty() {
                     None
                 } else {
                     Some(formatter_script.clone())
                 };
+                app.save_markdown_export_settings(
+                    &conv_path,
+                    &usr_path,
+                    &ch_path,
+                    &out_path,
+                    script.clone(),
+                );
                 let task = ExportTask::MarkdownExport {
-                    conversations_path: conversations_path.clone(),
-                    users_path: users_path.clone(),
-                    channels_path: channels_path.clone(),
-                    output_path: output_path.clone(),
+                    conversations_path: conv_path,
+                    users_path: usr_path,
+                    channels_path: ch_path,
+                    output_path: out_path,
                     formatter_script: script,
                 };
                 app.screen = Screen::Loading {
@@ -605,9 +624,12 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 field.pop();
             }
             KeyCode::Enter => {
+                let out_path = output_path.clone();
+                let emojis_dir = emojis_folder.clone();
+                app.save_export_emojis_settings(&out_path, &emojis_dir);
                 let task = ExportTask::ExportEmojis {
-                    output_path: output_path.clone(),
-                    emojis_folder: emojis_folder.clone(),
+                    output_path: out_path,
+                    emojis_folder: emojis_dir,
                 };
                 app.screen = Screen::Loading {
                     message: "Exporting custom emojis...".to_string(),
@@ -660,11 +682,21 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 field.pop();
             }
             KeyCode::Enter => {
+                let conv_path = conversations_path.clone();
+                let usr_path = users_path.clone();
+                let ch_path = channels_path.clone();
+                let out_path = output_path.clone();
+                app.save_export_index_settings(
+                    &conv_path,
+                    &usr_path,
+                    &ch_path,
+                    &out_path,
+                );
                 let task = ExportTask::ExportIndex {
-                    conversations_path: conversations_path.clone(),
-                    users_path: users_path.clone(),
-                    channels_path: channels_path.clone(),
-                    output_path: output_path.clone(),
+                    conversations_path: conv_path,
+                    users_path: usr_path,
+                    channels_path: ch_path,
+                    output_path: out_path,
                 };
                 app.screen = Screen::Loading {
                     message: "Exporting to index...".to_string(),
@@ -725,14 +757,20 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 field.pop();
             }
             KeyCode::Enter => {
+                let in_path = input_path.clone();
+                let url_str = url.clone();
+                let api_key_str = api_key.clone();
+                let idx_name = index_name.clone();
+                let should_clear = *clear;
+                app.save_meilisearch_settings(&in_path, &url_str, &api_key_str, &idx_name);
                 let task = ExportTask::ImportMeilisearch {
-                    input_path: input_path.clone(),
-                    url: url.clone(),
-                    api_key: api_key.clone(),
-                    index_name: index_name.clone(),
-                    clear: *clear,
+                    input_path: in_path,
+                    url: url_str,
+                    api_key: api_key_str,
+                    index_name: idx_name,
+                    clear: should_clear,
                 };
-                let msg = if *clear {
+                let msg = if should_clear {
                     "Importing to Meilisearch (clearing index)...".to_string()
                 } else {
                     "Importing to Meilisearch...".to_string()
@@ -896,10 +934,15 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 let usr_path = users_path.clone();
                 let ch_path = channels_path.clone();
 
+                app.save_edit_conversations_settings(&conv_path, &usr_path, &ch_path);
+
                 match slack::load_conversations_for_editing(&conv_path, &usr_path, &ch_path) {
                     Ok((channels, users, channel_data)) => {
+                        let mut channel_list = EditableChannelList::new(channels);
+                        // Use saved export path from settings
+                        channel_list.export_path = app.settings.edit_conversations.export_path.clone();
                         app.screen = Screen::EditConversationsChannelList {
-                            channels: EditableChannelList::new(channels),
+                            channels: channel_list,
                             users,
                             channel_data,
                             editing_export_path: false,
@@ -952,6 +995,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     (KeyCode::Char('e'), _) => {
                         let export_path = channels.export_path.clone();
                         let export_data = channels.to_export_data();
+                        app.save_edit_conversations_export_path(&export_path);
                         match slack::export_edited_conversations_to_file(&export_data, &export_path)
                         {
                             Ok(count) => {

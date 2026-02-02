@@ -484,10 +484,12 @@ impl App {
             Err(_) => (None, false),
         };
 
+        let output_path = self.settings.fetch_conversations.output_path.clone();
+
         self.screen = Screen::ExportConversations {
             from_date: TextInput::new(default_from_date().format("%Y-%m-%d").to_string()),
             to_date: TextInput::new(default_to_date().format("%Y-%m-%d").to_string()),
-            output_path: TextInput::new("./conversations.json".to_string()),
+            output_path: TextInput::new(output_path),
             active_field: ConvExportField::FromDate,
             channel_selection,
             loading_channels,
@@ -509,11 +511,12 @@ impl App {
         };
 
         let (year, week) = current_iso_week();
+        let output_path = self.settings.fetch_conversations.output_path.clone();
 
         self.screen = Screen::ExportConversationsWeek {
             year: TextInput::new(year.to_string()),
             week: TextInput::new(week.to_string()),
-            output_path: TextInput::new("./conversations.json".to_string()),
+            output_path: TextInput::new(output_path),
             active_field: ConvExportWeekField::Year,
             channel_selection,
             loading_channels,
@@ -522,19 +525,102 @@ impl App {
 
     pub fn open_archive_range(&mut self) {
         let (year, week) = current_iso_week();
+        let output_path = self.settings.archive_range.output_path.clone();
 
         self.screen = Screen::ArchiveRange {
             from_year: TextInput::new(year.to_string()),
             from_week: TextInput::new(week.to_string()),
             to_year: TextInput::new(year.to_string()),
             to_week: TextInput::new(week.to_string()),
-            output_path: TextInput::new("./conversations".to_string()),
+            output_path: TextInput::new(output_path),
             active_field: ArchiveRangeField::FromYear,
         };
     }
 
     pub fn save_selected_channels(&mut self, channels: Vec<String>) {
         self.settings.set_selected_channels(channels);
+        let _ = self.settings.save();
+    }
+
+    pub fn save_fetch_users_settings(&mut self, output_path: &str) {
+        self.settings.fetch_users.output_path = output_path.to_string();
+        let _ = self.settings.save();
+    }
+
+    pub fn save_fetch_channels_settings(&mut self, output_path: &str) {
+        self.settings.fetch_channels.output_path = output_path.to_string();
+        let _ = self.settings.save();
+    }
+
+    pub fn save_fetch_conversations_settings(&mut self, output_path: &str) {
+        self.settings.fetch_conversations.output_path = output_path.to_string();
+        let _ = self.settings.save();
+    }
+
+    pub fn save_archive_range_settings(&mut self, output_path: &str) {
+        self.settings.archive_range.output_path = output_path.to_string();
+        let _ = self.settings.save();
+    }
+
+    pub fn save_download_attachments_settings(&mut self, conversations_path: &str, output_path: &str) {
+        self.settings.download_attachments.conversations_path = conversations_path.to_string();
+        self.settings.download_attachments.output_path = output_path.to_string();
+        let _ = self.settings.save();
+    }
+
+    pub fn save_edit_conversations_settings(&mut self, conversations_path: &str, users_path: &str, channels_path: &str) {
+        self.settings.edit_conversations.conversations_path = conversations_path.to_string();
+        self.settings.edit_conversations.users_path = users_path.to_string();
+        self.settings.edit_conversations.channels_path = channels_path.to_string();
+        let _ = self.settings.save();
+    }
+
+    pub fn save_edit_conversations_export_path(&mut self, export_path: &str) {
+        self.settings.edit_conversations.export_path = export_path.to_string();
+        let _ = self.settings.save();
+    }
+
+    pub fn save_markdown_export_settings(
+        &mut self,
+        conversations_path: &str,
+        users_path: &str,
+        channels_path: &str,
+        output_path: &str,
+        formatter_script: Option<String>,
+    ) {
+        self.settings.markdown_export.conversations_path = conversations_path.to_string();
+        self.settings.markdown_export.users_path = users_path.to_string();
+        self.settings.markdown_export.channels_path = channels_path.to_string();
+        self.settings.markdown_export.output_path = output_path.to_string();
+        self.settings.markdown_export.formatter_script = formatter_script;
+        let _ = self.settings.save();
+    }
+
+    pub fn save_export_emojis_settings(&mut self, output_path: &str, emojis_folder: &str) {
+        self.settings.export_emojis.output_path = output_path.to_string();
+        self.settings.export_emojis.emojis_folder = emojis_folder.to_string();
+        let _ = self.settings.save();
+    }
+
+    pub fn save_export_index_settings(
+        &mut self,
+        conversations_path: &str,
+        users_path: &str,
+        channels_path: &str,
+        output_path: &str,
+    ) {
+        self.settings.export_index.conversations_path = conversations_path.to_string();
+        self.settings.export_index.users_path = users_path.to_string();
+        self.settings.export_index.channels_path = channels_path.to_string();
+        self.settings.export_index.output_path = output_path.to_string();
+        let _ = self.settings.save();
+    }
+
+    pub fn save_meilisearch_settings(&mut self, input_path: &str, url: &str, api_key: &str, index_name: &str) {
+        self.settings.meilisearch.input_path = input_path.to_string();
+        self.settings.meilisearch.url = url.to_string();
+        self.settings.meilisearch.api_key = api_key.to_string();
+        self.settings.meilisearch.index_name = index_name.to_string();
         let _ = self.settings.save();
     }
 }

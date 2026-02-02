@@ -64,7 +64,7 @@ pub async fn import_index_to_meilisearch(
 
     // Save settings
     report_progress(0, 0, "Saving settings...");
-    save_meilisearch_settings(url, api_key, index_name)?;
+    save_meilisearch_settings(index_path, url, api_key, index_name)?;
 
     // Load the index file
     report_progress(0, 0, "Loading index file...");
@@ -289,9 +289,10 @@ async fn copy_index_settings(source: &Index, target: &Index) -> Result<()> {
 }
 
 /// Save Meilisearch settings to settings.toml
-fn save_meilisearch_settings(url: &str, api_key: &str, index_name: &str) -> Result<()> {
+fn save_meilisearch_settings(input_path: &str, url: &str, api_key: &str, index_name: &str) -> Result<()> {
     let mut settings = Settings::load().unwrap_or_default();
     settings.meilisearch = MeilisearchSettings {
+        input_path: input_path.to_string(),
         url: url.to_string(),
         api_key: api_key.to_string(),
         index_name: index_name.to_string(),
