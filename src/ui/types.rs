@@ -96,6 +96,7 @@ pub enum MarkdownExportField {
     Users,
     Channels,
     Output,
+    FormatterScript,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -665,6 +666,7 @@ pub enum ExportTask {
         users_path: String,
         channels_path: String,
         output_path: String,
+        formatter_script: Option<String>,
     },
     ExportEmojis {
         output_path: String,
@@ -756,6 +758,7 @@ pub enum Screen {
         users_path: String,
         channels_path: String,
         output_path: String,
+        formatter_script: String,
         active_field: MarkdownExportField,
     },
     ExportEmojis {
@@ -794,15 +797,23 @@ pub enum Screen {
     },
     Success {
         message: String,
+        details: Option<String>,
+        details_scroll: usize,
     },
     Error {
         message: String,
     },
 }
 
+/// Result of an export operation with optional details (e.g., formatter stderr)
+pub struct ExportResult {
+    pub message: String,
+    pub details: Option<String>,
+}
+
 // Async result enum
 pub enum AsyncResult {
-    ExportComplete(std::result::Result<String, String>),
+    ExportComplete(std::result::Result<ExportResult, String>),
     ChannelsLoaded(std::result::Result<Vec<ChannelInfo>, String>),
     QueryResult(std::result::Result<Vec<crate::index::IndexEntry>, String>),
 }

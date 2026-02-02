@@ -60,11 +60,17 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                         };
                     }
                     MenuItem::SelectedConversationsToMarkdown => {
+                        let saved = Settings::load().ok();
+                        let formatter_script = saved
+                            .as_ref()
+                            .and_then(|s| s.markdown_export.formatter_script.clone())
+                            .unwrap_or_default();
                         app.screen = Screen::MarkdownExport {
                             conversations_path: "./selected-conversations.json".to_string(),
                             users_path: "./users.json".to_string(),
                             channels_path: "./channels.json".to_string(),
                             output_path: "./selected-conversations.md".to_string(),
+                            formatter_script,
                             active_field: MarkdownExportField::Conversations,
                         };
                     }
@@ -503,6 +509,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             users_path,
             channels_path,
             output_path,
+            formatter_script,
             active_field,
         } => match key.code {
             KeyCode::Esc => app.screen = Screen::MainMenu,
@@ -511,15 +518,17 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     MarkdownExportField::Conversations => MarkdownExportField::Users,
                     MarkdownExportField::Users => MarkdownExportField::Channels,
                     MarkdownExportField::Channels => MarkdownExportField::Output,
-                    MarkdownExportField::Output => MarkdownExportField::Conversations,
+                    MarkdownExportField::Output => MarkdownExportField::FormatterScript,
+                    MarkdownExportField::FormatterScript => MarkdownExportField::Conversations,
                 };
             }
             KeyCode::BackTab => {
                 *active_field = match active_field {
-                    MarkdownExportField::Conversations => MarkdownExportField::Output,
+                    MarkdownExportField::Conversations => MarkdownExportField::FormatterScript,
                     MarkdownExportField::Users => MarkdownExportField::Conversations,
                     MarkdownExportField::Channels => MarkdownExportField::Users,
                     MarkdownExportField::Output => MarkdownExportField::Channels,
+                    MarkdownExportField::FormatterScript => MarkdownExportField::Output,
                 };
             }
             KeyCode::Char(c) => {
@@ -528,6 +537,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     MarkdownExportField::Users => users_path,
                     MarkdownExportField::Channels => channels_path,
                     MarkdownExportField::Output => output_path,
+                    MarkdownExportField::FormatterScript => formatter_script,
                 };
                 field.push(c);
             }
@@ -537,15 +547,22 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     MarkdownExportField::Users => users_path,
                     MarkdownExportField::Channels => channels_path,
                     MarkdownExportField::Output => output_path,
+                    MarkdownExportField::FormatterScript => formatter_script,
                 };
                 field.pop();
             }
             KeyCode::Enter => {
+                let script = if formatter_script.trim().is_empty() {
+                    None
+                } else {
+                    Some(formatter_script.clone())
+                };
                 let task = ExportTask::MarkdownExport {
                     conversations_path: conversations_path.clone(),
                     users_path: users_path.clone(),
                     channels_path: channels_path.clone(),
                     output_path: output_path.clone(),
+                    formatter_script: script,
                 };
                 app.screen = Screen::Loading {
                     message: "Exporting to markdown...".to_string(),
@@ -943,6 +960,8 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                                         "Exported {} messages to {}",
                                         count, export_path
                                     ),
+                                    details: None,
+                                    details_scroll: 0,
                                 };
                             }
                             Err(e) => {
@@ -1179,7 +1198,28 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             }
         }
         Screen::Loading { .. } => {}
-        Screen::Success { .. } | Screen::Error { .. } => match key.code {
+        Screen::Success {
+            details,
+            details_scroll,
+            ..
+        } => match key.code {
+            KeyCode::Enter | KeyCode::Esc => {
+                app.screen = Screen::MainMenu;
+                app.menu_state.select(Some(0));
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if details.is_some() {
+                    *details_scroll = details_scroll.saturating_add(1);
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if details.is_some() {
+                    *details_scroll = details_scroll.saturating_sub(1);
+                }
+            }
+            _ => {}
+        },
+        Screen::Error { .. } => match key.code {
             KeyCode::Enter | KeyCode::Esc => {
                 app.screen = Screen::MainMenu;
                 app.menu_state.select(Some(0));

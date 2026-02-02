@@ -13,6 +13,8 @@ pub struct Settings {
     pub ui: UiSettings,
     #[serde(default)]
     pub meilisearch: MeilisearchSettings,
+    #[serde(default, rename = "markdown-export")]
+    pub markdown_export: MarkdownExportSettings,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -29,6 +31,12 @@ pub struct MeilisearchSettings {
     pub api_key: String,
     #[serde(default, rename = "index-name")]
     pub index_name: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MarkdownExportSettings {
+    #[serde(default, rename = "formatter-script")]
+    pub formatter_script: Option<String>,
 }
 
 impl Settings {

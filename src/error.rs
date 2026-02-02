@@ -52,6 +52,9 @@ pub enum AppError {
 
     #[error("Parquet error: {0}")]
     Parquet(String),
+
+    #[error("formatter script error: {0}")]
+    FormatterScript(String),
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;

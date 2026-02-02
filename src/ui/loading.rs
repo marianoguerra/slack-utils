@@ -1,6 +1,7 @@
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
+    text::Span,
     widgets::{Block, Borders, Clear, Gauge, Paragraph},
     Frame,
 };
@@ -34,42 +35,71 @@ pub fn render_loading(
         .alignment(Alignment::Center);
     f.render_widget(loading, chunks[0]);
 
-    if let Some((current, total, item_name)) = progress {
-        let percentage = if *total > 0 {
-            (*current as f64 / *total as f64 * 100.0) as u16
-        } else {
-            0
-        };
+    // Always show progress gauge, with default values if not yet set
+    let (current, total, item_name) = match progress {
+        Some((c, t, n)) => (*c, *t, n.as_str()),
+        None => (0, 1, "Starting..."),
+    };
 
-        let progress_text = format!("{}/{} - {}", current, total, item_name);
-        let gauge = Gauge::default()
-            .block(Block::default().borders(Borders::ALL).title("Progress"))
-            .gauge_style(Style::default().fg(Color::Cyan))
-            .percent(percentage)
-            .label(progress_text);
-        f.render_widget(gauge, chunks[1]);
-    }
+    let percentage = if total > 0 {
+        (current as f64 / total as f64 * 100.0) as u16
+    } else {
+        0
+    };
+
+    let progress_text = format!("{}/{} - {}", current, total, item_name);
+    let gauge = Gauge::default()
+        .block(Block::default().borders(Borders::ALL).title("Progress"))
+        .gauge_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .percent(percentage)
+        .label(Span::styled(
+            progress_text,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ));
+    f.render_widget(gauge, chunks[1]);
 }
 
-pub fn render_success(f: &mut Frame, message: &str, area: Rect) {
+pub fn render_success(f: &mut Frame, message: &str, details: Option<&str>, details_scroll: usize, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .title("Success")
         .border_style(Style::default().fg(Color::Green));
 
-    let popup_area = centered_rect(70, 40, area);
+    // Make popup larger if we have details
+    let popup_height = if details.is_some() { 70 } else { 40 };
+    let popup_area = centered_rect(70, popup_height, area);
     f.render_widget(Clear, popup_area);
     f.render_widget(block.clone(), popup_area);
 
     let inner = block.inner(popup_area);
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(20),
-            Constraint::Percentage(60),
-            Constraint::Percentage(20),
-        ])
-        .split(inner);
+
+    // Layout changes based on whether we have details
+    let chunks = if details.is_some() {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(2),  // Icon
+                Constraint::Length(3),  // Message
+                Constraint::Min(5),     // Details (scrollable)
+                Constraint::Length(2),  // Help
+            ])
+            .split(inner)
+    } else {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(20),
+                Constraint::Percentage(60),
+                Constraint::Percentage(20),
+            ])
+            .split(inner)
+    };
 
     let icon = Paragraph::new("✓")
         .style(
@@ -85,10 +115,29 @@ pub fn render_success(f: &mut Frame, message: &str, area: Rect) {
         .alignment(Alignment::Center);
     f.render_widget(msg, chunks[1]);
 
-    let help = Paragraph::new("Press Enter to continue")
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Center);
-    f.render_widget(help, chunks[2]);
+    if let Some(details_text) = details {
+        // Render details with scrolling
+        let details_block = Block::default()
+            .borders(Borders::ALL)
+            .title("Script Output (↑/↓ to scroll)")
+            .border_style(Style::default().fg(Color::Yellow));
+
+        let details_widget = Paragraph::new(details_text)
+            .style(Style::default().fg(Color::Yellow))
+            .block(details_block)
+            .scroll((details_scroll as u16, 0));
+        f.render_widget(details_widget, chunks[2]);
+
+        let help = Paragraph::new("Press Enter to continue")
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center);
+        f.render_widget(help, chunks[3]);
+    } else {
+        let help = Paragraph::new("Press Enter to continue")
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center);
+        f.render_widget(help, chunks[2]);
+    }
 }
 
 pub fn render_error(f: &mut Frame, message: &str, area: Rect) {

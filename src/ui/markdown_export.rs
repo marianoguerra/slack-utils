@@ -7,15 +7,24 @@ use ratatui::{
 
 use super::types::MarkdownExportField;
 
-pub fn render(
-    f: &mut Frame,
-    conversations_path: &str,
-    users_path: &str,
-    channels_path: &str,
-    output_path: &str,
-    active_field: MarkdownExportField,
-    area: Rect,
-) {
+pub struct MarkdownExportProps<'a> {
+    pub conversations_path: &'a str,
+    pub users_path: &'a str,
+    pub channels_path: &'a str,
+    pub output_path: &'a str,
+    pub formatter_script: &'a str,
+    pub active_field: MarkdownExportField,
+}
+
+pub fn render(f: &mut Frame, props: MarkdownExportProps, area: Rect) {
+    let MarkdownExportProps {
+        conversations_path,
+        users_path,
+        channels_path,
+        output_path,
+        formatter_script,
+        active_field,
+    } = props;
     let block = Block::default()
         .borders(Borders::ALL)
         .title("Selected Conversations to Markdown");
@@ -27,6 +36,7 @@ pub fn render(
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
+            Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
@@ -91,8 +101,22 @@ pub fn render(
         );
     f.render_widget(output_input, chunks[3]);
 
+    let formatter_style = if active_field == MarkdownExportField::FormatterScript {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let formatter_input = Paragraph::new(formatter_script)
+        .style(formatter_style)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Formatter Script (optional)"),
+        );
+    f.render_widget(formatter_input, chunks[4]);
+
     let help = Paragraph::new("Tab: Next Field | Enter: Export | Esc: Back")
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center);
-    f.render_widget(help, chunks[4]);
+    f.render_widget(help, chunks[5]);
 }

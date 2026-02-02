@@ -5,14 +5,15 @@ use std::thread;
 use ratatui::widgets::ListState;
 
 use crate::error::AppError;
+use crate::formatter::MarkdownExportOptions;
 use crate::index::export_conversations_to_index_with_progress;
-use crate::markdown::export_conversations_to_markdown_with_progress;
+use crate::markdown::export_conversations_to_markdown_with_options;
 use crate::meilisearch::import_index_to_meilisearch;
 use crate::settings::Settings;
 use crate::slack;
 use crate::ui::types::{
     ArchiveRangeField, AsyncResult, ChannelSelection, ConvExportField, ConvExportWeekField,
-    ExportTask, MenuItem, Screen,
+    ExportResult, ExportTask, MenuItem, Screen,
 };
 use crate::widgets::TextInput;
 use crate::{
@@ -101,7 +102,7 @@ impl App {
                         Ok::<_, AppError>(format!("Exported {} users to {}", count, output_path))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
-                        result.map_err(|e| e.to_string()),
+                        result.map(|msg| ExportResult { message: msg, details: None }).map_err(|e| e.to_string()),
                     ));
                 }
                 ExportTask::Channels { output_path, format } => {
@@ -110,7 +111,7 @@ impl App {
                         Ok::<_, AppError>(format!("Exported {} channels to {}", count, output_path))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
-                        result.map_err(|e| e.to_string()),
+                        result.map(|msg| ExportResult { message: msg, details: None }).map_err(|e| e.to_string()),
                     ));
                 }
                 ExportTask::Conversations {
@@ -150,7 +151,7 @@ impl App {
                         Ok::<_, AppError>(format!("Exported {} messages to {}", count, output_path))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
-                        result.map_err(|e| e.to_string()),
+                        result.map(|msg| ExportResult { message: msg, details: None }).map_err(|e| e.to_string()),
                     ));
                 }
                 ExportTask::ConversationsWeek {
@@ -192,7 +193,7 @@ impl App {
                         ))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
-                        result.map_err(|e| e.to_string()),
+                        result.map(|msg| ExportResult { message: msg, details: None }).map_err(|e| e.to_string()),
                     ));
                 }
                 ExportTask::ArchiveRange {
@@ -233,7 +234,7 @@ impl App {
                         ))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
-                        result.map_err(|e| e.to_string()),
+                        result.map(|msg| ExportResult { message: msg, details: None }).map_err(|e| e.to_string()),
                     ));
                 }
                 ExportTask::DownloadAttachments {
@@ -250,10 +251,13 @@ impl App {
                         Some(&progress_callback),
                     );
                     let msg = match result {
-                        Ok(r) => Ok(format!(
-                            "Downloaded {} files to {} ({} skipped, {} failed)",
-                            r.downloaded, output_path, r.skipped, r.failed
-                        )),
+                        Ok(r) => Ok(ExportResult {
+                            message: format!(
+                                "Downloaded {} files to {} ({} skipped, {} failed)",
+                                r.downloaded, output_path, r.skipped, r.failed
+                            ),
+                            details: None,
+                        }),
                         Err(e) => Err(e.to_string()),
                     };
                     let _ = tx.send(AsyncResult::ExportComplete(msg));
@@ -263,22 +267,44 @@ impl App {
                     users_path,
                     channels_path,
                     output_path,
+                    formatter_script,
                 } => {
                     let progress_callback = move |current: usize, total: usize, name: &str| {
                         let _ = progress_tx.send((current, total, name.to_string()));
                     };
-                    let result = export_conversations_to_markdown_with_progress(
+                    let options = MarkdownExportOptions::new().with_formatter_script(formatter_script);
+                    let result = export_conversations_to_markdown_with_options(
                         &conversations_path,
                         &users_path,
                         &channels_path,
                         &output_path,
                         Some(&progress_callback),
+                        &options,
                     );
                     let msg = match result {
-                        Ok(count) => Ok(format!(
-                            "Exported {} messages to {}",
-                            count, output_path
-                        )),
+                        Ok((count, stats)) => {
+                            let mut lines = vec![
+                                format!("Exported {} messages", count),
+                                format!("to {}", output_path),
+                            ];
+                            if stats.total_calls() > 0 {
+                                lines.push(format!(
+                                    "Formatter: {} calls ({} ok, {} failed)",
+                                    stats.total_calls(),
+                                    stats.total_successes(),
+                                    stats.total_failures()
+                                ));
+                            }
+                            let details = if stats.has_stderr() {
+                                Some(stats.stderr_combined())
+                            } else {
+                                None
+                            };
+                            Ok(ExportResult {
+                                message: lines.join("\n"),
+                                details,
+                            })
+                        },
                         Err(e) => Err(e.to_string()),
                     };
                     let _ = tx.send(AsyncResult::ExportComplete(msg));
@@ -304,7 +330,7 @@ impl App {
                         ))
                     });
                     let _ = tx.send(AsyncResult::ExportComplete(
-                        result.map_err(|e| e.to_string()),
+                        result.map(|msg| ExportResult { message: msg, details: None }).map_err(|e| e.to_string()),
                     ));
                 }
                 ExportTask::ExportIndex {
@@ -324,10 +350,10 @@ impl App {
                         Some(&progress_callback),
                     );
                     let msg = match result {
-                        Ok(count) => Ok(format!(
-                            "Exported {} messages to {}",
-                            count, output_path
-                        )),
+                        Ok(count) => Ok(ExportResult {
+                            message: format!("Exported {} messages to {}", count, output_path),
+                            details: None,
+                        }),
                         Err(e) => Err(e.to_string()),
                     };
                     let _ = tx.send(AsyncResult::ExportComplete(msg));
@@ -354,10 +380,13 @@ impl App {
                         .await
                     });
                     let msg = match result {
-                        Ok(r) => Ok(format!(
-                            "Imported {} documents to Meilisearch index '{}'",
-                            r.total, r.index_name
-                        )),
+                        Ok(r) => Ok(ExportResult {
+                            message: format!(
+                                "Imported {} documents to Meilisearch index '{}'",
+                                r.total, r.index_name
+                            ),
+                            details: None,
+                        }),
                         Err(e) => Err(e.to_string()),
                     };
                     let _ = tx.send(AsyncResult::ExportComplete(msg));
@@ -373,8 +402,12 @@ impl App {
             self.async_result_rx = None;
             self.progress_rx = None;
             match result {
-                AsyncResult::ExportComplete(Ok(msg)) => {
-                    self.screen = Screen::Success { message: msg };
+                AsyncResult::ExportComplete(Ok(export_result)) => {
+                    self.screen = Screen::Success {
+                        message: export_result.message,
+                        details: export_result.details,
+                        details_scroll: 0,
+                    };
                 }
                 AsyncResult::ExportComplete(Err(msg)) => {
                     self.screen = Screen::Error { message: msg };

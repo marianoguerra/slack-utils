@@ -8,6 +8,7 @@ use slack_morphism::prelude::{SlackBlock, SlackChannelId, SlackUserId};
 use webpage::{Webpage, WebpageOptions};
 
 use crate::error::{AppError, Result};
+use crate::formatter::{format_attachment, format_file, format_permalink, FormatterStats, MarkdownExportOptions};
 use crate::ProgressCallback;
 
 /// Maximum bytes to fetch when resolving link titles (32KB should be enough for <title>)
@@ -188,13 +189,15 @@ pub fn export_conversations_to_markdown(
     channels_path: &str,
     output_path: &str,
 ) -> Result<usize> {
-    export_conversations_to_markdown_with_progress(
+    let (count, _stats) = export_conversations_to_markdown_with_options(
         conversations_path,
         users_path,
         channels_path,
         output_path,
         None,
-    )
+        &MarkdownExportOptions::default(),
+    )?;
+    Ok(count)
 }
 
 /// Export selected conversations to markdown format with progress reporting
@@ -205,13 +208,34 @@ pub fn export_conversations_to_markdown_with_progress(
     output_path: &str,
     progress_callback: ProgressCallback,
 ) -> Result<usize> {
+    let (count, _stats) = export_conversations_to_markdown_with_options(
+        conversations_path,
+        users_path,
+        channels_path,
+        output_path,
+        progress_callback,
+        &MarkdownExportOptions::default(),
+    )?;
+    Ok(count)
+}
+
+/// Export selected conversations to markdown format with options and formatter support
+pub fn export_conversations_to_markdown_with_options(
+    conversations_path: &str,
+    users_path: &str,
+    channels_path: &str,
+    output_path: &str,
+    progress_callback: ProgressCallback,
+    options: &MarkdownExportOptions,
+) -> Result<(usize, FormatterStats)> {
+    let mut formatter_stats = FormatterStats::new();
     let report_progress = |current: usize, total: usize, msg: &str| {
         if let Some(cb) = progress_callback {
             cb(current, total, msg);
         }
     };
 
-    report_progress(0, 100, "Loading users...");
+    report_progress(1, 4, "Loading users...");
 
     // Load users.json to build user_id -> display_name map
     let users_data: Vec<serde_json::Value> = crate::load_json_file(users_path)?;
@@ -233,7 +257,7 @@ pub fn export_conversations_to_markdown_with_progress(
         })
         .collect();
 
-    report_progress(0, 100, "Loading channels...");
+    report_progress(2, 4, "Loading channels...");
 
     // Load channels.json to build channel_id -> channel_name map
     let channels_data: Vec<serde_json::Value> = crate::load_json_file(channels_path)?;
@@ -264,7 +288,7 @@ pub fn export_conversations_to_markdown_with_progress(
         ..SlackReferences::default()
     };
 
-    report_progress(0, 100, "Loading conversations...");
+    report_progress(3, 4, "Loading conversations...");
 
     // Load selected-conversations.json
     let conversations: Vec<serde_json::Value> = crate::load_json_file(conversations_path)?;
@@ -276,7 +300,7 @@ pub fn export_conversations_to_markdown_with_progress(
         .map(|msgs| msgs.len())
         .sum();
 
-    report_progress(0, total_messages, "Exporting messages...");
+    report_progress(4, 4, "Starting export...");
 
     // Open output file
     let output_file = File::create(output_path).map_err(|e| AppError::WriteFile {
@@ -301,17 +325,20 @@ pub fn export_conversations_to_markdown_with_progress(
             .map(|a| a.as_slice())
             .unwrap_or(&[]);
 
+        // Get channel name for progress and formatter
+        let channel_name = channel_names
+            .get(channel_id)
+            .map(|s| s.as_str())
+            .unwrap_or(channel_id);
+
         let messages_len = messages.len();
         for (msg_idx, message) in messages.iter().enumerate() {
-            // Check if this is a new channel
+            // Report progress for this message
+            report_progress(message_count + 1, total_messages, channel_name);
+
+            // Check if this is a new channel - write heading
             if current_channel_id.as_deref() != Some(channel_id) {
                 current_channel_id = Some(channel_id.to_string());
-
-                // Add channel heading
-                let channel_name = channel_names
-                    .get(channel_id)
-                    .map(|s| s.as_str())
-                    .unwrap_or(channel_id);
 
                 if message_count > 0 {
                     writeln!(writer).map_err(|e| AppError::WriteFile {
@@ -325,8 +352,11 @@ pub fn export_conversations_to_markdown_with_progress(
                 })?;
             }
 
-            // Report progress for this message
-            report_progress(message_count + 1, total_messages, "Processing messages...");
+            // Get message timestamp for formatter
+            let message_ts = message
+                .get("ts")
+                .and_then(|ts| ts.as_str())
+                .unwrap_or("");
 
             // Get user name
             let user_id = message.get("user").and_then(|u| u.as_str()).unwrap_or("");
@@ -365,6 +395,28 @@ pub fn export_conversations_to_markdown_with_progress(
                 source: e,
             })?;
 
+            // Call formatter for permalink if script is configured
+            if let Some(script_path) = &options.formatter_script
+                && let Some(permalink_response) = format_permalink(
+                    script_path,
+                    channel_id,
+                    channel_name,
+                    message_ts,
+                    message,
+                    &mut formatter_stats,
+                )
+            {
+                writeln!(
+                    writer,
+                    "[{}]({})\n",
+                    permalink_response.label, permalink_response.url
+                )
+                .map_err(|e| AppError::WriteFile {
+                    path: output_path.to_string(),
+                    source: e,
+                })?;
+            }
+
             // Render the message content using slack-blocks-render
             let markdown = render_message_to_markdown(message, &slack_references);
             if !markdown.is_empty() {
@@ -397,17 +449,32 @@ pub fn export_conversations_to_markdown_with_progress(
             let mut files: Vec<(String, String)> = Vec::new();
             if let Some(file_arr) = message.get("files").and_then(|f| f.as_array()) {
                 for file in file_arr {
-                    let title = file
-                        .get("title")
-                        .or_else(|| file.get("name"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Untitled file");
-                    let url = file
-                        .get("url_private")
-                        .or_else(|| file.get("permalink"))
-                        .and_then(|u| u.as_str());
-                    if let Some(url) = url {
-                        files.push((title.to_string(), url.to_string()));
+                    // Try to format file with external script first
+                    let (final_title, final_url) = if let Some(script_path) = &options.formatter_script
+                        && let Some(response) = format_file(
+                            script_path,
+                            channel_id,
+                            channel_name,
+                            file,
+                            &mut formatter_stats,
+                        )
+                    {
+                        (response.label, response.url)
+                    } else {
+                        let title = file
+                            .get("title")
+                            .or_else(|| file.get("name"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("Untitled file");
+                        let url = file
+                            .get("url_private")
+                            .or_else(|| file.get("permalink"))
+                            .and_then(|u| u.as_str())
+                            .unwrap_or("");
+                        (title.to_string(), url.to_string())
+                    };
+                    if !final_url.is_empty() {
+                        files.push((final_title, final_url));
                     }
                 }
             }
@@ -468,12 +535,26 @@ pub fn export_conversations_to_markdown_with_progress(
                 if let Some(url) = url
                     && !used_attachment_urls.contains(url)
                 {
-                    let title = att
-                        .get("title")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Untitled")
-                        .to_string();
-                    rich_links.push(RichLink::new(url.to_string(), title, Some(att)));
+                    // Try to format attachment with external script first
+                    let (final_title, final_url) = if let Some(script_path) = &options.formatter_script
+                        && let Some(response) = format_attachment(
+                            script_path,
+                            channel_id,
+                            channel_name,
+                            att,
+                            &mut formatter_stats,
+                        )
+                    {
+                        (response.label, response.url)
+                    } else {
+                        let title = att
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("Untitled")
+                            .to_string();
+                        (title, url.to_string())
+                    };
+                    rich_links.push(RichLink::new(final_url, final_title, Some(att)));
                 }
             }
 
@@ -523,7 +604,7 @@ pub fn export_conversations_to_markdown_with_progress(
         source: e,
     })?;
 
-    Ok(message_count)
+    Ok((message_count, formatter_stats))
 }
 
 /// Render a single message to markdown using slack-blocks-render

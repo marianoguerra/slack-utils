@@ -124,6 +124,10 @@ pub enum Commands {
         /// Output markdown file path
         #[arg(short, long, default_value = "selected-conversations.md")]
         output: String,
+
+        /// External formatter script path (overrides settings.toml)
+        #[arg(long)]
+        formatter_script: Option<String>,
     },
 
     /// Export custom emojis from Slack

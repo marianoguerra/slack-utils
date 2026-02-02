@@ -142,14 +142,18 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             users_path,
             channels_path,
             output_path,
+            formatter_script,
             active_field,
         } => markdown_export::render(
             f,
-            conversations_path,
-            users_path,
-            channels_path,
-            output_path,
-            *active_field,
+            markdown_export::MarkdownExportProps {
+                conversations_path,
+                users_path,
+                channels_path,
+                output_path,
+                formatter_script,
+                active_field: *active_field,
+            },
             chunks[1],
         ),
         Screen::ExportEmojis {
@@ -260,7 +264,9 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         Screen::Loading { message, progress } => {
             loading::render_loading(f, message, progress.as_ref(), chunks[1])
         }
-        Screen::Success { message } => loading::render_success(f, message, chunks[1]),
+        Screen::Success { message, details, details_scroll } => {
+            loading::render_success(f, message, details.as_deref(), *details_scroll, chunks[1])
+        }
         Screen::Error { message } => loading::render_error(f, message, chunks[1]),
     }
 }

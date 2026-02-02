@@ -6,6 +6,7 @@ use chrono::{Datelike, Local, NaiveDate};
 mod cli;
 mod commands;
 mod error;
+mod formatter;
 mod index;
 mod markdown;
 mod meilisearch;
@@ -66,6 +67,11 @@ impl std::str::FromStr for OutputFormat {
 // Re-export public API
 pub use cli::{Cli, Commands};
 pub use error::{AppError, Result};
+pub use formatter::{FormatterOutput, FormatterResponse, FormatterStats, MarkdownExportOptions};
+pub use markdown::{
+    export_conversations_to_markdown, export_conversations_to_markdown_with_options,
+    export_conversations_to_markdown_with_progress,
+};
 pub use parquet::{write_channels_parquet, write_conversations_parquet, write_users_parquet};
 
 /// Type alias for progress callback functions
@@ -201,10 +207,10 @@ pub fn run_ui() -> Result<()> {
     let mut app = app::App::new(token);
 
     loop {
-        terminal.draw(|f| ui::ui(f, &mut app))?;
-
         app.check_async_result();
         app.check_progress();
+
+        terminal.draw(|f| ui::ui(f, &mut app))?;
 
         if event::poll(Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?

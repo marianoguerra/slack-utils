@@ -1,9 +1,11 @@
 use std::path::Path;
 
 use crate::error::Result;
+use crate::formatter::MarkdownExportOptions;
 use crate::index::export_conversations_to_index;
-use crate::markdown::export_conversations_to_markdown;
+use crate::markdown::export_conversations_to_markdown_with_options;
 use crate::meilisearch::{import_index_to_meilisearch, query_meilisearch};
+use crate::settings::Settings;
 use crate::slack;
 use crate::{
     current_iso_week, default_from_date, default_to_date, load_token, parse_date,
@@ -239,15 +241,43 @@ pub fn run_export_markdown(
     users: &str,
     channels: &str,
     output: &str,
+    formatter_script: Option<&str>,
 ) -> Result<()> {
     println!("Exporting selected conversations to markdown...");
 
-    let count = export_conversations_to_markdown(conversations, users, channels, output)?;
+    // Merge CLI arg with settings: CLI takes precedence
+    let effective_script = match formatter_script {
+        Some(script) => Some(script.to_string()),
+        None => {
+            let settings = Settings::load().unwrap_or_default();
+            settings.markdown_export.formatter_script
+        }
+    };
+
+    if let Some(script) = &effective_script {
+        println!("  Using formatter script: {}", script);
+    }
+
+    let options = MarkdownExportOptions::new().with_formatter_script(effective_script);
+
+    let (count, stats) = export_conversations_to_markdown_with_options(
+        conversations,
+        users,
+        channels,
+        output,
+        None,
+        &options,
+    )?;
 
     println!(
         "Export completed successfully! {} messages exported to {}",
         count, output
     );
+
+    if stats.total_calls() > 0 {
+        println!("  {}", stats);
+    }
+
     Ok(())
 }
 
