@@ -13,19 +13,19 @@ async fn main() {
     let result = match cli.command {
         Commands::Ui => slack_utils::run_ui(),
         Commands::ExportConversations { from, to, output, format } => {
-            slack_utils::run_export_conversations_async(from, to, &output, &format).await
+            slack_utils::run_export_conversations(from, to, &output, &format).await
         }
         Commands::ExportConversationsWeek { year, week, output, format } => {
-            slack_utils::run_export_conversations_week_async(year, week, &output, &format).await
+            slack_utils::run_export_conversations_week(year, week, &output, &format).await
         }
         Commands::ArchiveRange { from_year, from_week, to_year, to_week, output } => {
-            slack_utils::run_archive_range_async(from_year, from_week, to_year, to_week, &output).await
+            slack_utils::run_archive_range(from_year, from_week, to_year, to_week, &output).await
         }
         Commands::ExportUsers { output, format } => {
-            slack_utils::run_export_users_async(&output, &format).await
+            slack_utils::run_export_users(&output, &format).await
         }
         Commands::ExportChannels { output, format } => {
-            slack_utils::run_export_channels_async(&output, &format).await
+            slack_utils::run_export_channels(&output, &format).await
         }
         Commands::DownloadAttachments { input, output } => {
             slack_utils::run_download_attachments(&input, &output)
@@ -39,7 +39,7 @@ async fn main() {
             backslash_line_breaks,
         } => slack_utils::run_export_markdown(&conversations, &users, &channels, &output, formatter_script.as_deref(), backslash_line_breaks),
         Commands::ExportEmojis { output, folder } => {
-            slack_utils::run_export_emojis_async(&output, &folder).await
+            slack_utils::run_export_emojis(&output, &folder).await
         }
         Commands::ExportIndex {
             conversations,
@@ -54,7 +54,7 @@ async fn main() {
             index_name,
             clear,
         } => {
-            slack_utils::run_import_index_meilisearch_async(&input, &url, &api_key, &index_name, clear)
+            slack_utils::run_import_index_meilisearch(&input, &url, &api_key, &index_name, clear)
                 .await
         }
         Commands::QueryMeilisearch {
@@ -63,7 +63,7 @@ async fn main() {
             api_key,
             index_name,
             limit,
-        } => slack_utils::run_query_meilisearch_async(&url, &api_key, &index_name, &query, limit).await,
+        } => slack_utils::run_query_meilisearch(&url, &api_key, &index_name, &query, limit).await,
         Commands::MdToHtml {
             input,
             output,

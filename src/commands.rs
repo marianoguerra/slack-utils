@@ -8,8 +8,8 @@ use crate::meilisearch::{import_index_to_meilisearch, query_meilisearch};
 use crate::settings::Settings;
 use crate::slack;
 use crate::{
-    current_iso_week, default_from_date, default_to_date, load_token, parse_date,
-    week_to_date_range, OutputFormat, SlackApiCallbacks,
+    cli_callbacks, cli_progress, current_iso_week, default_from_date, default_to_date,
+    load_token, parse_date, week_to_date_range, OutputFormat,
 };
 
 /// Derive output path based on format
@@ -18,23 +18,6 @@ fn derive_output_path(base: &str, format: OutputFormat) -> String {
         OutputFormat::Json => format!("{}.json", base),
         OutputFormat::Parquet => format!("{}.parquet", base),
     }
-}
-
-/// CLI progress callback - prints progress to stdout
-fn cli_progress(current: usize, total: usize, name: &str) {
-    if total > 0 {
-        println!("  [{}/{}] {}", current, total, name);
-    } else {
-        println!("  {}", name);
-    }
-}
-
-/// CLI rate limit callback - prints rate limit info to stderr
-fn cli_rate_limit(wait_secs: u64, attempt: u32, max_attempts: u32) {
-    eprintln!(
-        "  Rate limited, waiting {}s (attempt {}/{})",
-        wait_secs, attempt, max_attempts
-    );
 }
 
 pub async fn run_export_conversations(
@@ -66,17 +49,13 @@ pub async fn run_export_conversations(
         from_date, to_date, output_path, format
     );
 
-    let callbacks = SlackApiCallbacks::new()
-        .with_progress(&cli_progress)
-        .with_rate_limit(&cli_rate_limit);
-
     let count = slack::export_conversations(
         &token,
         from_date,
         to_date,
         Path::new(&output_path),
         None,
-        callbacks,
+        cli_callbacks(),
         format,
     )
     .await?;
@@ -116,17 +95,13 @@ pub async fn run_export_conversations_week(
         year, week, from_date, to_date, output_path, format
     );
 
-    let callbacks = SlackApiCallbacks::new()
-        .with_progress(&cli_progress)
-        .with_rate_limit(&cli_rate_limit);
-
     let count = slack::export_conversations(
         &token,
         from_date,
         to_date,
         Path::new(&output_path),
         None,
-        callbacks,
+        cli_callbacks(),
         format,
     )
     .await?;
@@ -161,10 +136,6 @@ pub async fn run_archive_range(
         from_year, from_week, to_year, to_week, output
     );
 
-    let callbacks = SlackApiCallbacks::new()
-        .with_progress(&cli_progress)
-        .with_rate_limit(&cli_rate_limit);
-
     let result = slack::archive_range(
         &token,
         from_year,
@@ -172,7 +143,7 @@ pub async fn run_archive_range(
         to_year,
         to_week,
         Path::new(output),
-        callbacks,
+        cli_callbacks(),
     )
     .await?;
 
@@ -221,9 +192,7 @@ pub fn run_download_attachments(input: &str, output: &str) -> Result<()> {
         &token,
         input,
         Path::new(output),
-        Some(&|current, total, name| {
-            println!("  [{}/{}] {}", current, total, name);
-        }),
+        Some(&cli_progress),
     )?;
 
     println!(
@@ -299,13 +268,7 @@ pub async fn run_export_emojis(output: &str, folder: &str) -> Result<()> {
         &token,
         Path::new(output),
         Path::new(folder),
-        Some(&|current, total, name| {
-            if total > 0 {
-                println!("  [{}/{}] {}", current, total, name);
-            } else {
-                println!("  {}", name);
-            }
-        }),
+        Some(&cli_progress),
     )
     .await?;
 
@@ -351,21 +314,13 @@ pub async fn run_import_index_meilisearch(
         println!("  Index will be cleared (using swap operation)");
     }
 
-    let progress_callback = |current: usize, total: usize, name: &str| {
-        if total > 0 {
-            println!("  [{}/{}] {}", current, total, name);
-        } else {
-            println!("  {}", name);
-        }
-    };
-
     let result = import_index_to_meilisearch(
         input,
         url,
         api_key,
         index_name,
         clear,
-        Some(&progress_callback),
+        Some(&cli_progress),
     )
     .await?;
 

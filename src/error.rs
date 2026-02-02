@@ -12,6 +12,12 @@ pub enum AppError {
     #[error("invalid date format: {0}")]
     InvalidDate(String),
 
+    #[error("invalid timestamp format: {0}")]
+    InvalidTimestamp(String),
+
+    #[error("Slack client initialization failed: {0}")]
+    SlackClientInit(String),
+
     #[error("Slack API error: {0}")]
     SlackApi(String),
 

@@ -94,7 +94,16 @@ impl App {
         self.progress_rx = Some(progress_rx);
 
         thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
+            let rt = match tokio::runtime::Runtime::new() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let _ = tx.send(AsyncResult::ExportComplete(Err(format!(
+                        "Failed to create async runtime: {}",
+                        e
+                    ))));
+                    return;
+                }
+            };
             match task {
                 ExportTask::Users { output_path, format } => {
                     let result = rt.block_on(async {

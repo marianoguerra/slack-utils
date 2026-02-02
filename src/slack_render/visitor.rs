@@ -26,7 +26,7 @@ visitor!(
                 SlackBlock::RichText(json_value) => visitor.visit_slack_rich_text_block(&SlackRichTextBlock { json_value: json_value.clone() }),
                 SlackBlock::Event(json_value) => visitor.visit_slack_event_block(&SlackEventBlock { json_value: json_value.clone() }),
                 SlackBlock::Markdown(markdown) => visitor.visit_slack_markdown_block(markdown),
-                SlackBlock::ShareShortcut(_) => todo!()
+                SlackBlock::ShareShortcut(_) => {} // Not supported yet
             }
         },
     ]

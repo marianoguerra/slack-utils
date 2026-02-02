@@ -121,19 +121,43 @@ impl<'a> SlackApiCallbacks<'a> {
     }
 }
 
-// Re-export command functions for main.rs compatibility
-pub use commands::run_archive_range as run_archive_range_async;
+/// CLI progress callback - prints progress to stdout
+pub fn cli_progress(current: usize, total: usize, name: &str) {
+    if total > 0 {
+        println!("  [{}/{}] {}", current, total, name);
+    } else {
+        println!("  {}", name);
+    }
+}
+
+/// CLI rate limit callback - prints rate limit info to stderr
+pub fn cli_rate_limit(wait_secs: u64, attempt: u32, max_attempts: u32) {
+    eprintln!(
+        "  Rate limited, waiting {}s (attempt {}/{})",
+        wait_secs, attempt, max_attempts
+    );
+}
+
+/// Create CLI-appropriate SlackApiCallbacks
+pub fn cli_callbacks() -> SlackApiCallbacks<'static> {
+    SlackApiCallbacks::new()
+        .with_progress(&cli_progress)
+        .with_rate_limit(&cli_rate_limit)
+}
+
+// Re-export command functions for main.rs
+pub use commands::run_archive_range;
 pub use commands::run_download_attachments;
-pub use commands::run_export_channels as run_export_channels_async;
-pub use commands::run_export_conversations as run_export_conversations_async;
-pub use commands::run_export_conversations_week as run_export_conversations_week_async;
-pub use commands::run_export_emojis as run_export_emojis_async;
+pub use commands::run_export_channels;
+pub use commands::run_export_conversations;
+pub use commands::run_export_conversations_week;
+pub use commands::run_export_emojis;
 pub use commands::run_export_index;
 pub use commands::run_export_markdown;
-pub use commands::run_export_users as run_export_users_async;
-pub use commands::run_import_index_meilisearch as run_import_index_meilisearch_async;
+pub use commands::run_export_users;
+pub use commands::run_import_index_meilisearch;
 pub use commands::run_md_to_html;
-pub use commands::run_query_meilisearch as run_query_meilisearch_async;
+pub use commands::run_query_meilisearch;
 
 /// Constant for the channels file
 pub const CHANNELS_FILE: &str = "channels.json";

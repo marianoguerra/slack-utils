@@ -21,15 +21,15 @@ const MAX_RATE_LIMIT_RETRIES: u32 = 5;
 /// Returns a tuple that can be used to open a session: `client.open_session(&token)`
 fn create_slack_client(
     token: &str,
-) -> (
+) -> Result<(
     SlackClient<SlackClientHyperHttpsConnector>,
     SlackApiToken,
-) {
-    let client = SlackClient::new(
-        SlackClientHyperConnector::new().expect("Failed to create Slack client connector"),
-    );
+)> {
+    let connector = SlackClientHyperConnector::new()
+        .map_err(|e| AppError::SlackClientInit(e.to_string()))?;
+    let client = SlackClient::new(connector);
     let token_obj = SlackApiToken::new(SlackApiTokenValue(token.to_string()));
-    (client, token_obj)
+    Ok((client, token_obj))
 }
 
 /// Executes a Slack API call with automatic retry on rate limit errors.
@@ -68,8 +68,19 @@ where
     }
 }
 
+/// Helper to check if a cursor indicates more pages are available and return the next cursor.
+/// Returns Some(cursor) if there are more pages, None otherwise.
+fn get_next_cursor(metadata: &Option<SlackResponseMetadata>) -> Option<SlackCursorId> {
+    metadata.as_ref().and_then(|m| {
+        m.next_cursor
+            .as_ref()
+            .filter(|c| !c.0.is_empty())
+            .cloned()
+    })
+}
+
 pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat) -> Result<usize> {
-    let (client, token_obj) = create_slack_client(token);
+    let (client, token_obj) = create_slack_client(token)?;
     let session = client.open_session(&token_obj);
 
     let mut all_users = Vec::new();
@@ -81,17 +92,11 @@ pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat)
             .opt_cursor(cursor);
 
         let response = with_rate_limit_retry(|| session.users_list(&request), None).await?;
-
         all_users.extend(response.members);
 
-        match response.response_metadata {
-            Some(meta)
-                if meta.next_cursor.is_some()
-                    && !meta.next_cursor.as_ref().unwrap().0.is_empty() =>
-            {
-                cursor = meta.next_cursor;
-            }
-            _ => break,
+        cursor = get_next_cursor(&response.response_metadata);
+        if cursor.is_none() {
+            break;
         }
     }
 
@@ -115,7 +120,7 @@ pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat)
 }
 
 pub async fn export_channels(token: &str, output_path: &Path, format: OutputFormat) -> Result<usize> {
-    let (client, token_obj) = create_slack_client(token);
+    let (client, token_obj) = create_slack_client(token)?;
     let session = client.open_session(&token_obj);
 
     let mut all_channels = Vec::new();
@@ -128,17 +133,11 @@ pub async fn export_channels(token: &str, output_path: &Path, format: OutputForm
             .opt_cursor(cursor);
 
         let response = with_rate_limit_retry(|| session.conversations_list(&request), None).await?;
-
         all_channels.extend(response.channels);
 
-        match response.response_metadata {
-            Some(meta)
-                if meta.next_cursor.is_some()
-                    && !meta.next_cursor.as_ref().unwrap().0.is_empty() =>
-            {
-                cursor = meta.next_cursor;
-            }
-            _ => break,
+        cursor = get_next_cursor(&response.response_metadata);
+        if cursor.is_none() {
+            break;
         }
     }
 
@@ -171,11 +170,14 @@ pub async fn export_conversations(
     format: OutputFormat,
 ) -> Result<usize> {
     let rate_limit_cb = callbacks.on_rate_limit;
-    let (client, token_obj) = create_slack_client(token);
+    let (client, token_obj) = create_slack_client(token)?;
     let session = client.open_session(&token_obj);
 
     let oldest_ts = date_to_slack_ts(from_date);
-    let latest_ts = date_to_slack_ts(to_date.succ_opt().unwrap_or(to_date));
+    let next_day = to_date.succ_opt().ok_or_else(|| {
+        AppError::InvalidDate(format!("Cannot compute day after {}", to_date))
+    })?;
+    let latest_ts = date_to_slack_ts(next_day);
 
     callbacks.report_progress(0, 0, "Fetching channel list...");
 
@@ -190,17 +192,11 @@ pub async fn export_conversations(
 
         let response =
             with_rate_limit_retry(|| session.conversations_list(&request), rate_limit_cb).await?;
-
         all_channels.extend(response.channels);
 
-        match response.response_metadata {
-            Some(meta)
-                if meta.next_cursor.is_some()
-                    && !meta.next_cursor.as_ref().unwrap().0.is_empty() =>
-            {
-                cursor = meta.next_cursor;
-            }
-            _ => break,
+        cursor = get_next_cursor(&response.response_metadata);
+        if cursor.is_none() {
+            break;
         }
     }
 
@@ -240,17 +236,11 @@ pub async fn export_conversations(
 
             let response =
                 with_rate_limit_retry(|| session.conversations_history(&request), rate_limit_cb).await?;
-
             messages.extend(response.messages);
 
-            match response.response_metadata {
-                Some(meta)
-                    if meta.next_cursor.is_some()
-                        && !meta.next_cursor.as_ref().unwrap().0.is_empty() =>
-                {
-                    msg_cursor = meta.next_cursor;
-                }
-                _ => break,
+            msg_cursor = get_next_cursor(&response.response_metadata);
+            if msg_cursor.is_none() {
+                break;
             }
         }
 
@@ -304,14 +294,9 @@ pub async fn export_conversations(
                         .collect();
                     replies.extend(thread_replies);
 
-                    match response.response_metadata {
-                        Some(meta)
-                            if meta.next_cursor.is_some()
-                                && !meta.next_cursor.as_ref().unwrap().0.is_empty() =>
-                        {
-                            reply_cursor = meta.next_cursor;
-                        }
-                        _ => break,
+                    reply_cursor = get_next_cursor(&response.response_metadata);
+                    if reply_cursor.is_none() {
+                        break;
                     }
                 }
 
@@ -362,7 +347,12 @@ struct ConversationExport {
 }
 
 fn date_to_slack_ts(date: NaiveDate) -> SlackTs {
-    let timestamp = date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+    // and_hms_opt(0, 0, 0) always succeeds for midnight on a valid NaiveDate,
+    // but we use unwrap_or_else to be defensive
+    let datetime = date
+        .and_hms_opt(0, 0, 0)
+        .unwrap_or_else(|| date.and_time(chrono::NaiveTime::MIN));
+    let timestamp = datetime.and_utc().timestamp();
     SlackTs(format!("{}.000000", timestamp))
 }
 
@@ -982,7 +972,7 @@ mod tui_support {
     use slack_morphism::prelude::*;
 
     use crate::{AppError, Result};
-    use super::{create_slack_client, with_rate_limit_retry};
+    use super::{create_slack_client, get_next_cursor, with_rate_limit_retry};
 
     /// Type alias for loaded conversation data: (channel_id, channel_name, messages)
     pub type LoadedConversations = (
@@ -1017,7 +1007,7 @@ mod tui_support {
     }
 
     pub async fn fetch_channels(token: &str) -> Result<Vec<ChannelInfo>> {
-        let (client, token_obj) = create_slack_client(token);
+        let (client, token_obj) = create_slack_client(token)?;
         let session = client.open_session(&token_obj);
 
         let mut all_channels = Vec::new();
@@ -1038,14 +1028,9 @@ mod tui_support {
                 });
             }
 
-            match response.response_metadata {
-                Some(meta)
-                    if meta.next_cursor.is_some()
-                        && !meta.next_cursor.as_ref().unwrap().0.is_empty() =>
-                {
-                    cursor = meta.next_cursor;
-                }
-                _ => break,
+            cursor = get_next_cursor(&response.response_metadata);
+            if cursor.is_none() {
+                break;
             }
         }
 

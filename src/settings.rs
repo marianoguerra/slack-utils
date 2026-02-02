@@ -41,29 +41,24 @@ pub struct UiSettings {
     pub selected_channels: Vec<String>,
 }
 
+/// Generic settings for operations that only need an output path.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct FetchUsersSettings {
+pub struct PathSettings {
     #[serde(default, rename = "output-path")]
     pub output_path: String,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct FetchChannelsSettings {
-    #[serde(default, rename = "output-path")]
-    pub output_path: String,
-}
+/// Type alias for fetch users settings (uses PathSettings)
+pub type FetchUsersSettings = PathSettings;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct FetchConversationsSettings {
-    #[serde(default, rename = "output-path")]
-    pub output_path: String,
-}
+/// Type alias for fetch channels settings (uses PathSettings)
+pub type FetchChannelsSettings = PathSettings;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ArchiveRangeSettings {
-    #[serde(default, rename = "output-path")]
-    pub output_path: String,
-}
+/// Type alias for fetch conversations settings (uses PathSettings)
+pub type FetchConversationsSettings = PathSettings;
+
+/// Type alias for archive range settings (uses PathSettings)
+pub type ArchiveRangeSettings = PathSettings;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DownloadAttachmentsSettings {

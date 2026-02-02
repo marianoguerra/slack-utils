@@ -1,6 +1,7 @@
 pub mod types;
 
 mod archive_range;
+mod channel_list;
 mod download_attachments;
 mod edit_conversations;
 mod export_conversations;
