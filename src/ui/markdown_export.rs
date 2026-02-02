@@ -13,6 +13,7 @@ pub struct MarkdownExportProps<'a> {
     pub channels_path: &'a str,
     pub output_path: &'a str,
     pub formatter_script: &'a str,
+    pub backslash_line_breaks: bool,
     pub active_field: MarkdownExportField,
 }
 
@@ -23,6 +24,7 @@ pub fn render(f: &mut Frame, props: MarkdownExportProps, area: Rect) {
         channels_path,
         output_path,
         formatter_script,
+        backslash_line_breaks,
         active_field,
     } = props;
     let block = Block::default()
@@ -36,6 +38,7 @@ pub fn render(f: &mut Frame, props: MarkdownExportProps, area: Rect) {
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
+            Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
@@ -115,8 +118,24 @@ pub fn render(f: &mut Frame, props: MarkdownExportProps, area: Rect) {
         );
     f.render_widget(formatter_input, chunks[4]);
 
-    let help = Paragraph::new("Tab: Next Field | Enter: Export | Esc: Back")
+    let backslash_style = if active_field == MarkdownExportField::BackslashLineBreaks {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let checkbox = if backslash_line_breaks { "[x]" } else { "[ ]" };
+    let backslash_text = format!("{} Backslash Line Breaks (adds \\ before newlines)", checkbox);
+    let backslash_input = Paragraph::new(backslash_text)
+        .style(backslash_style)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Options"),
+        );
+    f.render_widget(backslash_input, chunks[5]);
+
+    let help = Paragraph::new("Tab: Next Field | Space: Toggle Checkbox | Enter: Export | Esc: Back")
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center);
-    f.render_widget(help, chunks[5]);
+    f.render_widget(help, chunks[6]);
 }

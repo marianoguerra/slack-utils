@@ -268,11 +268,14 @@ impl App {
                     channels_path,
                     output_path,
                     formatter_script,
+                    backslash_line_breaks,
                 } => {
                     let progress_callback = move |current: usize, total: usize, name: &str| {
                         let _ = progress_tx.send((current, total, name.to_string()));
                     };
-                    let options = MarkdownExportOptions::new().with_formatter_script(formatter_script);
+                    let options = MarkdownExportOptions::new()
+                        .with_formatter_script(formatter_script)
+                        .with_backslash_line_breaks(backslash_line_breaks);
                     let result = export_conversations_to_markdown_with_options(
                         &conversations_path,
                         &users_path,
@@ -587,12 +590,14 @@ impl App {
         channels_path: &str,
         output_path: &str,
         formatter_script: Option<String>,
+        backslash_line_breaks: bool,
     ) {
         self.settings.markdown_export.conversations_path = conversations_path.to_string();
         self.settings.markdown_export.users_path = users_path.to_string();
         self.settings.markdown_export.channels_path = channels_path.to_string();
         self.settings.markdown_export.output_path = output_path.to_string();
         self.settings.markdown_export.formatter_script = formatter_script;
+        self.settings.markdown_export.backslash_line_breaks = backslash_line_breaks;
         let _ = self.settings.save();
     }
 

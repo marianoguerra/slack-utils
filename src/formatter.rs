@@ -263,6 +263,9 @@ pub fn format_file(
 #[derive(Debug, Clone, Default)]
 pub struct MarkdownExportOptions {
     pub formatter_script: Option<String>,
+    /// When true, newlines in rich text are converted to `\` + newline for hard line breaks.
+    /// Default is false (no backslashes).
+    pub backslash_line_breaks: bool,
 }
 
 impl MarkdownExportOptions {
@@ -272,6 +275,11 @@ impl MarkdownExportOptions {
 
     pub fn with_formatter_script(mut self, script: Option<String>) -> Self {
         self.formatter_script = script;
+        self
+    }
+
+    pub fn with_backslash_line_breaks(mut self, enabled: bool) -> Self {
+        self.backslash_line_breaks = enabled;
         self
     }
 }

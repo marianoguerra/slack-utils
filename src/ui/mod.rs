@@ -144,6 +144,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             channels_path,
             output_path,
             formatter_script,
+            backslash_line_breaks,
             active_field,
         } => markdown_export::render(
             f,
@@ -153,6 +154,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                 channels_path,
                 output_path,
                 formatter_script,
+                backslash_line_breaks: *backslash_line_breaks,
                 active_field: *active_field,
             },
             chunks[1],

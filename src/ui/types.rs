@@ -97,6 +97,7 @@ pub enum MarkdownExportField {
     Channels,
     Output,
     FormatterScript,
+    BackslashLineBreaks,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -677,6 +678,7 @@ pub enum ExportTask {
         channels_path: String,
         output_path: String,
         formatter_script: Option<String>,
+        backslash_line_breaks: bool,
     },
     ExportEmojis {
         output_path: String,
@@ -769,6 +771,7 @@ pub enum Screen {
         channels_path: String,
         output_path: String,
         formatter_script: String,
+        backslash_line_breaks: bool,
         active_field: MarkdownExportField,
     },
     ExportEmojis {

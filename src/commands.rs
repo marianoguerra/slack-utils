@@ -242,23 +242,32 @@ pub fn run_export_markdown(
     channels: &str,
     output: &str,
     formatter_script: Option<&str>,
+    backslash_line_breaks: bool,
 ) -> Result<()> {
     println!("Exporting selected conversations to markdown...");
 
-    // Merge CLI arg with settings: CLI takes precedence
+    // Load settings and merge with CLI args (CLI takes precedence)
+    let settings = Settings::load().unwrap_or_default();
+
     let effective_script = match formatter_script {
         Some(script) => Some(script.to_string()),
-        None => {
-            let settings = Settings::load().unwrap_or_default();
-            settings.markdown_export.formatter_script
-        }
+        None => settings.markdown_export.formatter_script,
     };
+
+    // CLI flag takes precedence over settings
+    let effective_backslash_line_breaks =
+        backslash_line_breaks || settings.markdown_export.backslash_line_breaks;
 
     if let Some(script) = &effective_script {
         println!("  Using formatter script: {}", script);
     }
+    if effective_backslash_line_breaks {
+        println!("  Using backslash line breaks");
+    }
 
-    let options = MarkdownExportOptions::new().with_formatter_script(effective_script);
+    let options = MarkdownExportOptions::new()
+        .with_formatter_script(effective_script)
+        .with_backslash_line_breaks(effective_backslash_line_breaks);
 
     let (count, stats) = export_conversations_to_markdown_with_options(
         conversations,

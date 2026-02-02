@@ -14,4 +14,6 @@ pub mod references;
 pub mod visitor;
 
 pub use markdown::render_blocks_as_markdown;
+pub use markdown::render_blocks_as_markdown_with_options;
+pub use markdown::MarkdownRenderOptions;
 pub use references::SlackReferences;

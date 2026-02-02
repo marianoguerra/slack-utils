@@ -36,7 +36,8 @@ async fn main() {
             channels,
             output,
             formatter_script,
-        } => slack_utils::run_export_markdown(&conversations, &users, &channels, &output, formatter_script.as_deref()),
+            backslash_line_breaks,
+        } => slack_utils::run_export_markdown(&conversations, &users, &channels, &output, formatter_script.as_deref(), backslash_line_breaks),
         Commands::ExportEmojis { output, folder } => {
             slack_utils::run_export_emojis_async(&output, &folder).await
         }

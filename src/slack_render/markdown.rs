@@ -11,14 +11,36 @@ use super::{
     },
 };
 
-/// TODO: document this function
-///
+/// Options for markdown rendering
+#[derive(Debug, Clone, Default)]
+pub struct MarkdownRenderOptions {
+    /// When true, newlines in rich text are converted to `\` + newline for hard line breaks.
+    /// Default is false (no backslashes).
+    pub backslash_line_breaks: bool,
+}
+
+/// Render Slack blocks as markdown
 pub fn render_blocks_as_markdown(
     blocks: Vec<SlackBlock>,
     slack_references: SlackReferences,
     handle_delimiter: Option<String>,
 ) -> String {
-    let mut block_renderer = MarkdownRenderer::new(slack_references, handle_delimiter);
+    render_blocks_as_markdown_with_options(
+        blocks,
+        slack_references,
+        handle_delimiter,
+        &MarkdownRenderOptions::default(),
+    )
+}
+
+/// Render Slack blocks as markdown with options
+pub fn render_blocks_as_markdown_with_options(
+    blocks: Vec<SlackBlock>,
+    slack_references: SlackReferences,
+    handle_delimiter: Option<String>,
+    options: &MarkdownRenderOptions,
+) -> String {
+    let mut block_renderer = MarkdownRenderer::new(slack_references, handle_delimiter, options.clone());
     for block in blocks {
         block_renderer.visit_slack_block(&block);
     }
@@ -29,14 +51,16 @@ struct MarkdownRenderer {
     pub sub_texts: Vec<String>,
     pub slack_references: SlackReferences,
     pub handle_delimiter: Option<String>,
+    pub options: MarkdownRenderOptions,
 }
 
 impl MarkdownRenderer {
-    pub fn new(slack_references: SlackReferences, handle_delimiter: Option<String>) -> Self {
+    pub fn new(slack_references: SlackReferences, handle_delimiter: Option<String>, options: MarkdownRenderOptions) -> Self {
         MarkdownRenderer {
             sub_texts: vec![],
             slack_references,
             handle_delimiter,
+            options,
         }
     }
 }
@@ -98,7 +122,7 @@ fn join(mut texts: Vec<String>, join_str: &str) -> String {
 impl Visitor for MarkdownRenderer {
     fn visit_slack_section_block(&mut self, slack_section_block: &SlackSectionBlock) {
         let mut section_renderer =
-            MarkdownRenderer::new(self.slack_references.clone(), self.handle_delimiter.clone());
+            MarkdownRenderer::new(self.slack_references.clone(), self.handle_delimiter.clone(), self.options.clone());
         visit_slack_section_block(&mut section_renderer, slack_section_block);
         self.sub_texts.push(join(section_renderer.sub_texts, ""));
     }
@@ -110,7 +134,7 @@ impl Visitor for MarkdownRenderer {
 
     fn visit_slack_header_block(&mut self, slack_header_block: &SlackHeaderBlock) {
         let mut header_renderer =
-            MarkdownRenderer::new(self.slack_references.clone(), self.handle_delimiter.clone());
+            MarkdownRenderer::new(self.slack_references.clone(), self.handle_delimiter.clone(), self.options.clone());
         visit_slack_header_block(&mut header_renderer, slack_header_block);
         self.sub_texts
             .push(format!("## {}", join(header_renderer.sub_texts, "")));
@@ -152,7 +176,7 @@ impl Visitor for MarkdownRenderer {
 
     fn visit_slack_context_block(&mut self, slack_context_block: &SlackContextBlock) {
         let mut section_renderer =
-            MarkdownRenderer::new(self.slack_references.clone(), self.handle_delimiter.clone());
+            MarkdownRenderer::new(self.slack_references.clone(), self.handle_delimiter.clone(), self.options.clone());
         visit_slack_context_block(&mut section_renderer, slack_context_block);
         self.sub_texts.push(section_renderer.sub_texts.join(""));
     }
@@ -278,7 +302,8 @@ fn render_rich_text_section_elements(
             .collect::<Vec<String>>(),
         "",
     );
-    if fix_newlines_in_text {
+    // Only apply backslash line breaks if both the caller requested it AND the option is enabled
+    if fix_newlines_in_text && renderer.options.backslash_line_breaks {
         fix_newlines(result)
     } else {
         result
@@ -919,6 +944,7 @@ Video description
 
                 #[test]
                 fn test_with_text_with_newline() {
+                    // Default behavior: no backslash line breaks
                     let blocks = vec![SlackBlock::RichText(serde_json::json!({
                         "type": "rich_text",
                         "elements": [
@@ -939,6 +965,41 @@ Video description
                     }))];
                     assert_eq!(
                         render_blocks_as_markdown(blocks, SlackReferences::default(), None),
+                        "Text111\nText112\nText211\nText212\n".to_string()
+                    );
+                }
+
+                #[test]
+                fn test_with_text_with_newline_backslash_enabled() {
+                    // With backslash line breaks enabled
+                    let blocks = vec![SlackBlock::RichText(serde_json::json!({
+                        "type": "rich_text",
+                        "elements": [
+                            {
+                                "type": "rich_text_section",
+                                "elements": [
+                                    {
+                                        "type": "text",
+                                        "text": "Text111\nText112\n"
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "Text211\nText212\n"
+                                    }
+                                ]
+                            }
+                        ]
+                    }))];
+                    let options = MarkdownRenderOptions {
+                        backslash_line_breaks: true,
+                    };
+                    assert_eq!(
+                        render_blocks_as_markdown_with_options(
+                            blocks,
+                            SlackReferences::default(),
+                            None,
+                            &options
+                        ),
                         "Text111\\\nText112\\\nText211\\\nText212".to_string()
                     );
                 }
@@ -967,6 +1028,7 @@ Video description
 
                 #[test]
                 fn test_with_text_with_only_newline() {
+                    // Default behavior: no backslash line breaks, just pass through newlines
                     let blocks = vec![SlackBlock::RichText(serde_json::json!({
                         "type": "rich_text",
                         "elements": [
@@ -983,6 +1045,37 @@ Video description
                     }))];
                     assert_eq!(
                         render_blocks_as_markdown(blocks, SlackReferences::default(), None),
+                        "\n".to_string()
+                    );
+                }
+
+                #[test]
+                fn test_with_text_with_only_newline_backslash_enabled() {
+                    // With backslash line breaks enabled, trailing backslash-newlines are trimmed
+                    let blocks = vec![SlackBlock::RichText(serde_json::json!({
+                        "type": "rich_text",
+                        "elements": [
+                            {
+                                "type": "rich_text_section",
+                                "elements": [
+                                    {
+                                        "type": "text",
+                                        "text": "\n"
+                                    }
+                                ]
+                            }
+                        ]
+                    }))];
+                    let options = MarkdownRenderOptions {
+                        backslash_line_breaks: true,
+                    };
+                    assert_eq!(
+                        render_blocks_as_markdown_with_options(
+                            blocks,
+                            SlackReferences::default(),
+                            None,
+                            &options
+                        ),
                         "".to_string()
                     );
                 }

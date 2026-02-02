@@ -70,6 +70,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                             channels_path: s.channels_path.clone(),
                             output_path: s.output_path.clone(),
                             formatter_script: s.formatter_script.clone().unwrap_or_default(),
+                            backslash_line_breaks: s.backslash_line_breaks,
                             active_field: MarkdownExportField::Conversations,
                         };
                     }
@@ -518,6 +519,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
             channels_path,
             output_path,
             formatter_script,
+            backslash_line_breaks,
             active_field,
         } => match key.code {
             KeyCode::Esc => app.screen = Screen::MainMenu,
@@ -527,37 +529,48 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     MarkdownExportField::Users => MarkdownExportField::Channels,
                     MarkdownExportField::Channels => MarkdownExportField::Output,
                     MarkdownExportField::Output => MarkdownExportField::FormatterScript,
-                    MarkdownExportField::FormatterScript => MarkdownExportField::Conversations,
+                    MarkdownExportField::FormatterScript => MarkdownExportField::BackslashLineBreaks,
+                    MarkdownExportField::BackslashLineBreaks => MarkdownExportField::Conversations,
                 };
             }
             KeyCode::BackTab => {
                 *active_field = match active_field {
-                    MarkdownExportField::Conversations => MarkdownExportField::FormatterScript,
+                    MarkdownExportField::Conversations => MarkdownExportField::BackslashLineBreaks,
                     MarkdownExportField::Users => MarkdownExportField::Conversations,
                     MarkdownExportField::Channels => MarkdownExportField::Users,
                     MarkdownExportField::Output => MarkdownExportField::Channels,
                     MarkdownExportField::FormatterScript => MarkdownExportField::Output,
+                    MarkdownExportField::BackslashLineBreaks => MarkdownExportField::FormatterScript,
                 };
+            }
+            KeyCode::Char(' ') if *active_field == MarkdownExportField::BackslashLineBreaks => {
+                *backslash_line_breaks = !*backslash_line_breaks;
             }
             KeyCode::Char(c) => {
                 let field = match active_field {
-                    MarkdownExportField::Conversations => conversations_path,
-                    MarkdownExportField::Users => users_path,
-                    MarkdownExportField::Channels => channels_path,
-                    MarkdownExportField::Output => output_path,
-                    MarkdownExportField::FormatterScript => formatter_script,
+                    MarkdownExportField::Conversations => Some(conversations_path),
+                    MarkdownExportField::Users => Some(users_path),
+                    MarkdownExportField::Channels => Some(channels_path),
+                    MarkdownExportField::Output => Some(output_path),
+                    MarkdownExportField::FormatterScript => Some(formatter_script),
+                    MarkdownExportField::BackslashLineBreaks => None,
                 };
-                field.push(c);
+                if let Some(f) = field {
+                    f.push(c);
+                }
             }
             KeyCode::Backspace => {
                 let field = match active_field {
-                    MarkdownExportField::Conversations => conversations_path,
-                    MarkdownExportField::Users => users_path,
-                    MarkdownExportField::Channels => channels_path,
-                    MarkdownExportField::Output => output_path,
-                    MarkdownExportField::FormatterScript => formatter_script,
+                    MarkdownExportField::Conversations => Some(conversations_path),
+                    MarkdownExportField::Users => Some(users_path),
+                    MarkdownExportField::Channels => Some(channels_path),
+                    MarkdownExportField::Output => Some(output_path),
+                    MarkdownExportField::FormatterScript => Some(formatter_script),
+                    MarkdownExportField::BackslashLineBreaks => None,
                 };
-                field.pop();
+                if let Some(f) = field {
+                    f.pop();
+                }
             }
             KeyCode::Enter => {
                 let conv_path = conversations_path.clone();
@@ -569,12 +582,14 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                 } else {
                     Some(formatter_script.clone())
                 };
+                let bl_breaks = *backslash_line_breaks;
                 app.save_markdown_export_settings(
                     &conv_path,
                     &usr_path,
                     &ch_path,
                     &out_path,
                     script.clone(),
+                    bl_breaks,
                 );
                 let task = ExportTask::MarkdownExport {
                     conversations_path: conv_path,
@@ -582,6 +597,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) {
                     channels_path: ch_path,
                     output_path: out_path,
                     formatter_script: script,
+                    backslash_line_breaks: bl_breaks,
                 };
                 app.screen = Screen::Loading {
                     message: "Exporting to markdown...".to_string(),

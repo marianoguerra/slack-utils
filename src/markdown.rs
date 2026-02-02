@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::time::Duration;
 
-use crate::slack_render::{render_blocks_as_markdown, SlackReferences};
+use crate::slack_render::{render_blocks_as_markdown_with_options, MarkdownRenderOptions, SlackReferences};
 use slack_morphism::prelude::{SlackBlock, SlackChannelId, SlackUserId};
 use webpage::{Webpage, WebpageOptions};
 
@@ -235,6 +235,11 @@ pub fn export_conversations_to_markdown_with_options(
         }
     };
 
+    // Create render options from export options
+    let render_options = MarkdownRenderOptions {
+        backslash_line_breaks: options.backslash_line_breaks,
+    };
+
     report_progress(1, 4, "Loading users...");
 
     // Load users.json to build user_id -> display_name map
@@ -418,7 +423,7 @@ pub fn export_conversations_to_markdown_with_options(
             }
 
             // Render the message content using slack-blocks-render
-            let markdown = render_message_to_markdown(message, &slack_references);
+            let markdown = render_message_to_markdown(message, &slack_references, &render_options);
             if !markdown.is_empty() {
                 writeln!(writer, "{}", markdown).map_err(|e| AppError::WriteFile {
                     path: output_path.to_string(),
@@ -611,6 +616,7 @@ pub fn export_conversations_to_markdown_with_options(
 fn render_message_to_markdown(
     message: &serde_json::Value,
     slack_references: &SlackReferences,
+    render_options: &MarkdownRenderOptions,
 ) -> String {
     // Try to render blocks if available
     if let Some(blocks_array) = message.get("blocks").and_then(|b| b.as_array()) {
@@ -626,10 +632,11 @@ fn render_message_to_markdown(
             .collect();
 
         if !blocks.is_empty() {
-            let rendered = render_blocks_as_markdown(
+            let rendered = render_blocks_as_markdown_with_options(
                 blocks,
                 slack_references.clone(),
                 Some("**".to_string()),
+                render_options,
             );
             if !rendered.is_empty() {
                 return rendered;

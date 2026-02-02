@@ -128,6 +128,10 @@ pub enum Commands {
         /// External formatter script path (overrides settings.toml)
         #[arg(long)]
         formatter_script: Option<String>,
+
+        /// Convert newlines to backslash + newline for hard line breaks in markdown
+        #[arg(long)]
+        backslash_line_breaks: bool,
     },
 
     /// Export custom emojis from Slack
