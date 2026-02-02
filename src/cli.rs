@@ -204,4 +204,114 @@ pub enum Commands {
         #[arg(short, long, default_value = "20")]
         limit: usize,
     },
+
+    /// Convert Markdown file to HTML
+    MdToHtml {
+        /// Input markdown file path
+        input: String,
+
+        /// Output HTML file path (defaults to input with .html extension)
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Use GFM (GitHub Flavored Markdown) preset
+        #[arg(long)]
+        gfm: bool,
+
+        /// Enable autolinks (URLs become links automatically) [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        autolink: bool,
+
+        /// Enable code (indented) blocks [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        code_indented: bool,
+
+        /// Enable code (fenced) blocks [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        code_fenced: bool,
+
+        /// Enable definition lists [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        definition: bool,
+
+        /// Enable frontmatter (YAML metadata) [default: false]
+        #[arg(long)]
+        frontmatter: bool,
+
+        /// Enable GFM autolink literals [default: false]
+        #[arg(long)]
+        gfm_autolink_literal: bool,
+
+        /// Enable GFM footnote definitions [default: false]
+        #[arg(long)]
+        gfm_footnote_definition: bool,
+
+        /// Enable GFM label start footnote [default: false]
+        #[arg(long)]
+        gfm_label_start_footnote: bool,
+
+        /// Enable GFM strikethrough [default: false]
+        #[arg(long)]
+        gfm_strikethrough: bool,
+
+        /// Enable GFM tables [default: false]
+        #[arg(long)]
+        gfm_table: bool,
+
+        /// Enable GFM task list items [default: false]
+        #[arg(long)]
+        gfm_task_list_item: bool,
+
+        /// Enable hard break (escape) [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        hard_break_escape: bool,
+
+        /// Enable hard break (trailing) [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        hard_break_trailing: bool,
+
+        /// Enable HTML (flow) [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        html_flow: bool,
+
+        /// Enable HTML (text) [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        html_text: bool,
+
+        /// Enable label end [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        label_end: bool,
+
+        /// Enable label start (image) [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        label_start_image: bool,
+
+        /// Enable label start (link) [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        label_start_link: bool,
+
+        /// Enable list items [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        list_item: bool,
+
+        /// Enable math (flow) [default: false]
+        #[arg(long)]
+        math_flow: bool,
+
+        /// Enable math (text) [default: false]
+        #[arg(long)]
+        math_text: bool,
+
+        /// Enable thematic break (---) [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        thematic_break: bool,
+
+        /// Use single tilde for strikethrough (~text~) [default: false]
+        #[arg(long)]
+        gfm_strikethrough_single_tilde: bool,
+
+        /// Use single dollar for math ($x$) [default: true]
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        math_text_single_dollar: bool,
+    },
 }

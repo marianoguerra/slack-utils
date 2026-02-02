@@ -12,6 +12,7 @@ mod import_meilisearch;
 mod loading;
 mod main_menu;
 mod markdown_export;
+mod md_to_html;
 mod query_meilisearch;
 
 use ratatui::{
@@ -218,6 +219,12 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             },
             chunks[1],
         ),
+        Screen::MdToHtml {
+            input_path,
+            output_path,
+            gfm,
+            active_field,
+        } => md_to_html::render(f, input_path, output_path, *gfm, *active_field, chunks[1]),
         Screen::EditConversationsPathInput {
             conversations_path,
             users_path,

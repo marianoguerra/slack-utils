@@ -63,6 +63,68 @@ async fn main() {
             index_name,
             limit,
         } => slack_utils::run_query_meilisearch_async(&url, &api_key, &index_name, &query, limit).await,
+        Commands::MdToHtml {
+            input,
+            output,
+            gfm,
+            autolink,
+            code_indented,
+            code_fenced,
+            definition,
+            frontmatter,
+            gfm_autolink_literal,
+            gfm_footnote_definition,
+            gfm_label_start_footnote,
+            gfm_strikethrough,
+            gfm_table,
+            gfm_task_list_item,
+            hard_break_escape,
+            hard_break_trailing,
+            html_flow,
+            html_text,
+            label_end,
+            label_start_image,
+            label_start_link,
+            list_item,
+            math_flow,
+            math_text,
+            thematic_break,
+            gfm_strikethrough_single_tilde,
+            math_text_single_dollar,
+        } => {
+            let options = if gfm {
+                slack_utils::md_to_html::MdToHtmlOptions::gfm()
+            } else {
+                slack_utils::md_to_html::MdToHtmlOptions {
+                    gfm,
+                    autolink,
+                    code_indented,
+                    code_fenced,
+                    definition,
+                    frontmatter,
+                    gfm_autolink_literal,
+                    gfm_footnote_definition,
+                    gfm_label_start_footnote,
+                    gfm_strikethrough,
+                    gfm_table,
+                    gfm_task_list_item,
+                    hard_break_escape,
+                    hard_break_trailing,
+                    html_flow,
+                    html_text,
+                    label_end,
+                    label_start_image,
+                    label_start_link,
+                    list_item,
+                    math_flow,
+                    math_text,
+                    thematic_break,
+                    gfm_strikethrough_single_tilde,
+                    math_text_single_dollar,
+                }
+            };
+            slack_utils::run_md_to_html(&input, output.as_deref(), &options)
+        }
     };
 
     if let Err(e) = result {

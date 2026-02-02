@@ -130,6 +130,13 @@ pub enum QueryMeilisearchField {
     IndexName,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MdToHtmlField {
+    InputPath,
+    OutputPath,
+    Gfm,
+}
+
 // Menu item enum
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MenuItem {
@@ -145,6 +152,7 @@ pub enum MenuItem {
     ImportIndexMeilisearch,
     QueryMeilisearch,
     ExportEmojis,
+    MdToHtml,
     Exit,
 }
 
@@ -163,6 +171,7 @@ impl MenuItem {
             MenuItem::ImportIndexMeilisearch,
             MenuItem::QueryMeilisearch,
             MenuItem::ExportEmojis,
+            MenuItem::MdToHtml,
             MenuItem::Exit,
         ]
     }
@@ -181,6 +190,7 @@ impl MenuItem {
             MenuItem::ImportIndexMeilisearch => "Import Index to Meilisearch",
             MenuItem::QueryMeilisearch => "Search Meilisearch",
             MenuItem::ExportEmojis => "Export Custom Emojis",
+            MenuItem::MdToHtml => "Convert Markdown to HTML",
             MenuItem::Exit => "Exit",
         }
     }
@@ -790,6 +800,12 @@ pub enum Screen {
         results: Option<Vec<crate::index::IndexEntry>>,
         result_state: ListState,
         error: Option<String>,
+    },
+    MdToHtml {
+        input_path: String,
+        output_path: String,
+        gfm: bool,
+        active_field: MdToHtmlField,
     },
     Loading {
         message: String,

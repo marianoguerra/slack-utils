@@ -405,3 +405,16 @@ pub async fn run_query_meilisearch(
 
     Ok(())
 }
+
+pub fn run_md_to_html(
+    input: &str,
+    output: Option<&str>,
+    options: &crate::md_to_html::MdToHtmlOptions,
+) -> Result<()> {
+    println!("Converting {} to HTML...", input);
+
+    let output_path = crate::md_to_html::convert_md_file_to_html(input, output, options)?;
+
+    println!("Successfully converted to {}", output_path);
+    Ok(())
+}

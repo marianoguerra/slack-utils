@@ -9,6 +9,7 @@ mod error;
 mod formatter;
 mod index;
 mod markdown;
+pub mod md_to_html;
 mod meilisearch;
 mod parquet;
 mod settings;
@@ -130,6 +131,7 @@ pub use commands::run_export_index;
 pub use commands::run_export_markdown;
 pub use commands::run_export_users as run_export_users_async;
 pub use commands::run_import_index_meilisearch as run_import_index_meilisearch_async;
+pub use commands::run_md_to_html;
 pub use commands::run_query_meilisearch as run_query_meilisearch_async;
 
 /// Constant for the channels file

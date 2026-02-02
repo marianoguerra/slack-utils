@@ -55,6 +55,9 @@ pub enum AppError {
 
     #[error("formatter script error: {0}")]
     FormatterScript(String),
+
+    #[error("markdown conversion error: {0}")]
+    MarkdownConvert(String),
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;

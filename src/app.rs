@@ -623,4 +623,11 @@ impl App {
         self.settings.meilisearch.index_name = index_name.to_string();
         let _ = self.settings.save();
     }
+
+    pub fn save_md_to_html_settings(&mut self, input_path: &str, output_path: Option<&str>, gfm: bool) {
+        self.settings.md_to_html.input_path = input_path.to_string();
+        self.settings.md_to_html.output_path = output_path.map(|s| s.to_string());
+        self.settings.md_to_html.gfm = gfm;
+        let _ = self.settings.save();
+    }
 }
