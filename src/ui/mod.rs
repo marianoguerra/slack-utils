@@ -19,6 +19,7 @@ mod query_meilisearch;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
@@ -58,14 +59,22 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(f.area());
 
-    let banner = Paragraph::new("Slack Utils")
-        .style(
+    let (iso_year, iso_week) = crate::current_iso_week();
+    let today = chrono::Local::now().date_naive();
+    let banner = Paragraph::new(Line::from(vec![
+        Span::styled(
+            "Slack Utils",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
-        )
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL));
+        ),
+        Span::styled(
+            format!("  {today}  W{iso_week:02} ({iso_year})"),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]))
+    .alignment(Alignment::Center)
+    .block(Block::default().borders(Borders::ALL));
 
     f.render_widget(banner, chunks[0]);
 

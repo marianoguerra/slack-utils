@@ -158,6 +158,7 @@ pub use commands::run_export_users;
 pub use commands::run_import_index_meilisearch;
 pub use commands::run_md_to_html;
 pub use commands::run_query_meilisearch;
+pub use commands::run_work_week;
 
 /// Constant for the channels file
 pub const CHANNELS_FILE: &str = "channels.json";

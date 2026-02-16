@@ -7,6 +7,8 @@ use crate::markdown::export_conversations_to_markdown_with_options;
 use crate::meilisearch::{import_index_to_meilisearch, query_meilisearch};
 use crate::settings::Settings;
 use crate::slack;
+use chrono::Local;
+
 use crate::{
     cli_callbacks, cli_progress, current_iso_week, default_from_date, default_to_date,
     load_token, parse_date, week_to_date_range, OutputFormat,
@@ -18,6 +20,12 @@ fn derive_output_path(base: &str, format: OutputFormat) -> String {
         OutputFormat::Json => format!("{}.json", base),
         OutputFormat::Parquet => format!("{}.parquet", base),
     }
+}
+
+pub fn run_work_week() {
+    let (year, week) = current_iso_week();
+    let today = Local::now().date_naive();
+    println!("{today}  W{week:02} ({year})");
 }
 
 pub async fn run_export_conversations(

@@ -13,6 +13,9 @@ pub enum Commands {
     /// Launch the interactive TUI
     Ui,
 
+    /// Show current date and ISO work week
+    WorkWeek,
+
     /// Export conversations in a date range
     ExportConversations {
         /// Start date (YYYY-MM-DD), defaults to 7 days ago

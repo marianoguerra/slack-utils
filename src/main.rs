@@ -12,6 +12,10 @@ async fn main() {
 
     let result = match cli.command {
         Commands::Ui => slack_utils::run_ui(),
+        Commands::WorkWeek => {
+            slack_utils::run_work_week();
+            Ok(())
+        }
         Commands::ExportConversations { from, to, output, format } => {
             slack_utils::run_export_conversations(from, to, &output, &format).await
         }
