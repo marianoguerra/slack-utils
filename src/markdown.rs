@@ -255,6 +255,12 @@ pub fn export_conversations_to_markdown_with_options(
                 .and_then(|p| p.get("display_name"))
                 .and_then(|n| n.as_str())
                 .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    user.get("profile")
+                        .and_then(|p| p.get("real_name"))
+                        .and_then(|n| n.as_str())
+                        .filter(|s| !s.is_empty())
+                })
                 .or_else(|| user.get("name").and_then(|n| n.as_str()))
                 .unwrap_or(&id)
                 .to_string();
