@@ -1,11 +1,10 @@
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
-    widgets::{Block, Borders, Paragraph},
+    layout::{Constraint, Direction, Layout, Rect},
+    widgets::{Block, Borders},
     Frame,
 };
 
-use super::{channel_list, render_text_field, types::{ChannelSelection, ConvExportField}};
+use super::{channel_list, render_help_text, render_text_field, types::{ChannelSelection, ConvExportField}};
 use crate::widgets::TextInput;
 
 #[allow(clippy::too_many_arguments)]
@@ -79,8 +78,5 @@ pub fn render(
     } else {
         "Tab: Next Field | Enter: Export | Esc: Back"
     };
-    let help = Paragraph::new(help_text)
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Center);
-    f.render_widget(help, chunks[4]);
+    render_help_text(f, help_text, chunks[4]);
 }

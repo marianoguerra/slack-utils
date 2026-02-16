@@ -1,9 +1,11 @@
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+
+use super::render_help_text;
 
 pub fn render(f: &mut Frame, title: &str, output_path: &str, area: Rect) {
     let block = Block::default().borders(Borders::ALL).title(title);
@@ -22,8 +24,5 @@ pub fn render(f: &mut Frame, title: &str, output_path: &str, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title("Output Path"));
     f.render_widget(output_input, chunks[0]);
 
-    let help = Paragraph::new("Enter: Confirm | Esc: Back")
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Center);
-    f.render_widget(help, chunks[1]);
+    render_help_text(f, "Enter: Confirm | Esc: Back", chunks[1]);
 }

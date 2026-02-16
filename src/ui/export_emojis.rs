@@ -1,11 +1,10 @@
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
-    widgets::{Block, Borders, Paragraph},
+    layout::{Constraint, Direction, Layout, Rect},
+    widgets::{Block, Borders},
     Frame,
 };
 
-use super::types::ExportEmojisField;
+use super::{render_help_text, render_static_field, types::ExportEmojisField};
 
 pub fn render(
     f: &mut Frame,
@@ -31,36 +30,7 @@ pub fn render(
         ])
         .split(inner);
 
-    let output_style = if active_field == ExportEmojisField::OutputPath {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let output_input = Paragraph::new(output_path)
-        .style(output_style)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Emoji Data Output (JSON)"),
-        );
-    f.render_widget(output_input, chunks[0]);
-
-    let folder_style = if active_field == ExportEmojisField::EmojisFolder {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let folder_input = Paragraph::new(emojis_folder)
-        .style(folder_style)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Emoji Images Folder"),
-        );
-    f.render_widget(folder_input, chunks[1]);
-
-    let help = Paragraph::new("Tab: Next Field | Enter: Export | Esc: Back")
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Center);
-    f.render_widget(help, chunks[2]);
+    render_static_field(f, output_path, "Emoji Data Output (JSON)", active_field == ExportEmojisField::OutputPath, chunks[0]);
+    render_static_field(f, emojis_folder, "Emoji Images Folder", active_field == ExportEmojisField::EmojisFolder, chunks[1]);
+    render_help_text(f, "Tab: Next Field | Enter: Export | Esc: Back", chunks[2]);
 }

@@ -28,14 +28,18 @@ pub use types::*;
 use crate::app::App;
 use crate::widgets::TextInput;
 
-/// Renders a text input field with a title and active state styling.
-/// When active, shows cursor; when inactive, shows plain text.
-pub fn render_text_field(f: &mut Frame, input: &TextInput, title: &str, active: bool, area: Rect) {
-    let style = if active {
+fn active_style(active: bool) -> Style {
+    if active {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
-    };
+    }
+}
+
+/// Renders a text input field with a title and active state styling.
+/// When active, shows cursor; when inactive, shows plain text.
+pub fn render_text_field(f: &mut Frame, input: &TextInput, title: &str, active: bool, area: Rect) {
+    let style = active_style(active);
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -51,6 +55,41 @@ pub fn render_text_field(f: &mut Frame, input: &TextInput, title: &str, active: 
         let para = Paragraph::new(input.text());
         f.render_widget(para, inner);
     }
+}
+
+/// Renders a static (non-editable) text field with a title and active state styling.
+pub fn render_static_field(f: &mut Frame, text: &str, title: &str, active: bool, area: Rect) {
+    let style = active_style(active);
+    let widget = Paragraph::new(text)
+        .style(style)
+        .block(Block::default().borders(Borders::ALL).title(title));
+    f.render_widget(widget, area);
+}
+
+/// Renders a checkbox field with a label, title, and active state styling.
+pub fn render_checkbox_field(
+    f: &mut Frame,
+    checked: bool,
+    label: &str,
+    title: &str,
+    active: bool,
+    area: Rect,
+) {
+    let style = active_style(active);
+    let checkbox = if checked { "[x]" } else { "[ ]" };
+    let text = format!("{} {}", checkbox, label);
+    let widget = Paragraph::new(text)
+        .style(style)
+        .block(Block::default().borders(Borders::ALL).title(title));
+    f.render_widget(widget, area);
+}
+
+/// Renders a help text line centered with DarkGray styling.
+pub fn render_help_text(f: &mut Frame, text: &str, area: Rect) {
+    let help = Paragraph::new(text)
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Center);
+    f.render_widget(help, area);
 }
 
 pub fn ui(f: &mut Frame, app: &mut App) {

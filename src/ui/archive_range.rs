@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
 };
 
-use super::{render_text_field, types::ArchiveRangeField};
+use super::{render_help_text, render_text_field, types::ArchiveRangeField};
 use crate::widgets::TextInput;
 
 #[allow(clippy::too_many_arguments)]
@@ -95,9 +95,5 @@ pub fn render(
     .block(Block::default());
     f.render_widget(info_text, chunks[5]);
 
-    // Help text
-    let help = Paragraph::new("Tab: Next Field | Enter: Start Archive | Esc: Back")
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Center);
-    f.render_widget(help, chunks[6]);
+    render_help_text(f, "Tab: Next Field | Enter: Start Archive | Esc: Back", chunks[6]);
 }

@@ -102,19 +102,7 @@ pub async fn export_users(token: &str, output_path: &Path, format: OutputFormat)
 
     let count = all_users.len();
 
-    match format {
-        OutputFormat::Json => {
-            write_json(output_path, &all_users)?;
-        }
-        OutputFormat::Parquet => {
-            let users_json: Vec<serde_json::Value> = all_users
-                .iter()
-                .map(serde_json::to_value)
-                .collect::<std::result::Result<_, _>>()
-                .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
-            parquet::write_users_parquet(output_path, &users_json)?;
-        }
-    }
+    write_output(&all_users, output_path, format, parquet::write_users_parquet)?;
 
     Ok(count)
 }
@@ -143,19 +131,7 @@ pub async fn export_channels(token: &str, output_path: &Path, format: OutputForm
 
     let count = all_channels.len();
 
-    match format {
-        OutputFormat::Json => {
-            write_json(output_path, &all_channels)?;
-        }
-        OutputFormat::Parquet => {
-            let channels_json: Vec<serde_json::Value> = all_channels
-                .iter()
-                .map(serde_json::to_value)
-                .collect::<std::result::Result<_, _>>()
-                .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
-            parquet::write_channels_parquet(output_path, &channels_json)?;
-        }
-    }
+    write_output(&all_channels, output_path, format, parquet::write_channels_parquet)?;
 
     Ok(count)
 }
@@ -322,19 +298,9 @@ pub async fn export_conversations(
 
     let total_messages: usize = all_conversations.iter().map(|c| c.messages.len()).sum();
 
-    match format {
-        OutputFormat::Json => {
-            write_json(output_path, &all_conversations)?;
-        }
-        OutputFormat::Parquet => {
-            let conversations_json: Vec<serde_json::Value> = all_conversations
-                .iter()
-                .map(serde_json::to_value)
-                .collect::<std::result::Result<_, _>>()
-                .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
-            parquet::write_conversations_parquet(output_path, &conversations_json)?;
-        }
-    }
+    write_output(&all_conversations, output_path, format, |path, values| {
+        parquet::write_conversations_parquet(path, values).map(|_| ())
+    })?;
 
     Ok(total_messages)
 }
@@ -363,6 +329,28 @@ fn write_json<T: Serialize>(path: &Path, data: &T) -> Result<()> {
     })?;
     let writer = BufWriter::new(file);
     serde_json::to_writer_pretty(writer, data).map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+    Ok(())
+}
+
+fn write_output<T: Serialize>(
+    items: &[T],
+    output_path: &Path,
+    format: OutputFormat,
+    write_parquet: impl Fn(&Path, &[serde_json::Value]) -> Result<()>,
+) -> Result<()> {
+    match format {
+        OutputFormat::Json => {
+            write_json(output_path, &items)?;
+        }
+        OutputFormat::Parquet => {
+            let json_values: Vec<serde_json::Value> = items
+                .iter()
+                .map(serde_json::to_value)
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| AppError::JsonSerialize(e.to_string()))?;
+            write_parquet(output_path, &json_values)?;
+        }
+    }
     Ok(())
 }
 

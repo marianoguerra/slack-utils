@@ -1,11 +1,10 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders},
     Frame,
 };
 
-use super::types::MdToHtmlField;
+use super::{render_checkbox_field, render_help_text, render_static_field, types::MdToHtmlField};
 
 pub fn render(
     f: &mut Frame,
@@ -23,7 +22,7 @@ pub fn render(
             Constraint::Length(3), // Input path
             Constraint::Length(3), // Output path
             Constraint::Length(3), // GFM toggle
-            Constraint::Min(0),    // Help text
+            Constraint::Min(0),   // Help text
         ])
         .split(area);
 
@@ -32,62 +31,11 @@ pub fn render(
         .title("Convert Markdown to HTML");
     f.render_widget(block, area);
 
-    // Input path field
-    let input_style = if active_field == MdToHtmlField::InputPath {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let input_widget = Paragraph::new(input_path)
-        .style(input_style)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Input Path (markdown file)"),
-        );
-    f.render_widget(input_widget, chunks[1]);
+    render_static_field(f, input_path, "Input Path (markdown file)", active_field == MdToHtmlField::InputPath, chunks[1]);
 
-    // Output path field
-    let output_style = if active_field == MdToHtmlField::OutputPath {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let output_widget = Paragraph::new(if output_path.is_empty() {
-        "(auto: input.html)"
-    } else {
-        output_path
-    })
-    .style(output_style)
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("Output Path (optional, defaults to input with .html)"),
-    );
-    f.render_widget(output_widget, chunks[2]);
+    let output_display = if output_path.is_empty() { "(auto: input.html)" } else { output_path };
+    render_static_field(f, output_display, "Output Path (optional, defaults to input with .html)", active_field == MdToHtmlField::OutputPath, chunks[2]);
 
-    // GFM toggle
-    let gfm_style = if active_field == MdToHtmlField::Gfm {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    let gfm_text = if gfm { "[x] GFM" } else { "[ ] GFM" };
-    let gfm_widget = Paragraph::new(gfm_text).style(gfm_style).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title("GitHub Flavored Markdown (tables, strikethrough, task lists)"),
-    );
-    f.render_widget(gfm_widget, chunks[3]);
-
-    // Help text
-    let help = Paragraph::new(
-        "Tab/Shift+Tab: Switch fields | Space: Toggle GFM | Enter: Convert | Esc: Back",
-    )
-    .style(
-        Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::ITALIC),
-    );
-    f.render_widget(help, chunks[4]);
+    render_checkbox_field(f, gfm, "GFM", "GitHub Flavored Markdown (tables, strikethrough, task lists)", active_field == MdToHtmlField::Gfm, chunks[3]);
+    render_help_text(f, "Tab/Shift+Tab: Switch fields | Space: Toggle GFM | Enter: Convert | Esc: Back", chunks[4]);
 }
